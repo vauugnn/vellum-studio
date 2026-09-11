@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-ink-800 text-vellum-200 font-sans antialiased;
+    /* Nothing in either window is text the user needs to select, and stray
+       selection highlights on a drag look broken. */
+    user-select: none;
+    cursor: default;
+  }
+
+  /* The HUD window is transparent; its own root paints the only surface. */
+  body.hud {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .drag {
+    -webkit-app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  .rule {
+    @apply border-ink-600;
+  }
+
+  .field-label {
+    @apply text-[11px] uppercase tracking-[0.14em] text-vellum-400;
+  }
+
+  .hint {
+    @apply text-[11px] leading-snug text-vellum-400;
+  }
+
+  .card {
+    @apply rounded-lg border border-ink-600 bg-ink-700/60 p-4;
+  }
+}

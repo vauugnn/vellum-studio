@@ -1,0 +1,43 @@
+{
+  "name": "vellum-studio",
+  "productName": "Vellum Studio",
+  "version": "1.0.0",
+  "description": "Illustration workspace with session presence tools.",
+  "private": true,
+  "type": "module",
+  "main": "src/main/index.js",
+  "scripts": {
+    "build:native": "bash native/VellumInput/build.sh",
+    "build:native:universal": "UNIVERSAL=1 bash native/VellumInput/build.sh",
+    "probe": "node native/VellumInput/probe.mjs",
+    "executor": "node src/main/executor/runner.js",
+    "test": "node --test src/main/executor/*.test.js",
+    "dev": "concurrently -k -n vite,electron -c cyan,magenta \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "wait-on tcp:5273 && VITE_DEV_SERVER_URL=http://localhost:5273 electron .",
+    "install:electron": "node node_modules/electron/install.js",
+    "build:renderer": "vite build",
+    "build:icon": "swiftc -O -swift-version 5 -target arm64-apple-macos13.0 -framework AppKit -o native/Icon/dist/make-icon native/Icon/make-icon.swift && ./native/Icon/dist/make-icon build/icon.iconset && iconutil -c icns build/icon.iconset -o build/icon.icns",
+    "build": "npm run build:native && npm run build:icon && npm run build:renderer",
+    "dist": "npm run build:native:universal && npm run build:icon && npm run build:renderer && electron-builder --mac",
+    "notarize": "xcrun notarytool submit dist/*.dmg --keychain-profile vellum-notary --wait",
+    "staple": "xcrun stapler staple dist/*.dmg && xcrun stapler validate dist/*.dmg",
+    "verify:gatekeeper": "spctl -a -vvv -t install \"dist/mac-arm64/Vellum Studio.app\""
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.2.0",
+    "autoprefixer": "^10.5.4",
+    "concurrently": "^10.0.4",
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^3.4.19",
+    "vite": "^7.3.6",
+    "wait-on": "^9.1.0"
+  }
+}

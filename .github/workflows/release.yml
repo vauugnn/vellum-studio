@@ -1,0 +1,101 @@
+name: Release
+
+# Tag a version to publish:  git tag v0.1.0 && git push --tags
+# Or run it by hand from the Actions tab to get an unsigned build for testing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: "Sign and notarize (needs the secrets to be set)"
+        type: boolean
+        default: true
+
+jobs:
+  macos:
+    # macOS runner is not optional: the sidecar is Swift against AppKit and
+    # CoreGraphics, codesign only exists here, and notarization talks to Apple
+    # through a tool that ships with Xcode.
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        # The scheduler is the part that cannot be checked by looking at the app,
+        # so a release never goes out on a red suite.
+        run: npm test
+
+      - name: Build sidecar and icon
+        run: |
+          npm run build:native:universal
+          npm run build:icon
+          lipo -archs native/VellumInput/dist/vellum-input
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Package
+        env:
+          # electron-builder reads these directly. Absent on a dispatch run with
+          # sign=false, in which case it produces an unsigned build instead of
+          # failing — useful for checking the packaging itself.
+          CSC_LINK: ${{ inputs.sign != false && secrets.CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ inputs.sign != false && secrets.CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Never let electron-builder create a release on its own; the upload
+          # step below is the only thing that publishes.
+          GH_TOKEN: ""
+        run: |
+          if [ -n "$CSC_LINK" ]; then
+            npx electron-builder --mac --publish never --config.mac.notarize=true
+          else
+            echo "::warning::No signing certificate — building unsigned"
+            npx electron-builder --mac --publish never \
+              --config.mac.identity=null --config.mac.notarize=false
+          fi
+
+      - name: Verify the bundle
+        run: |
+          APP="dist/mac-arm64/Vellum Studio.app"
+          [ -d "$APP" ] || APP="dist/mac/Vellum Studio.app"
+
+          echo "── sidecar architectures ──"
+          lipo -archs "$APP/Contents/Resources/vellum-input"
+
+          if [ -n "${{ secrets.CSC_LINK }}" ] && [ "${{ inputs.sign }}" != "false" ]; then
+            echo "── signature ──"
+            codesign --verify --deep --strict --verbose=2 "$APP"
+            # The sidecar is an extraResource, which electron-builder does not
+            # sign on its own — build/after-sign.cjs handles it. Check it stuck,
+            # because an unsigned nested binary fails notarization and silently
+            # detaches the Accessibility grant from the app.
+            codesign --verify --verbose=2 "$APP/Contents/Resources/vellum-input"
+            echo "── notarization ──"
+            spctl -a -vvv -t install "$APP"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vellum-studio-macos
+          path: dist/*.dmg
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg
+          draft: true
+          generate_release_notes: true

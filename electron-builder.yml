@@ -1,0 +1,84 @@
+appId: studio.vellum.app
+productName: Vellum Studio
+
+# What other software sees.
+#
+# Anything asking macOS for the frontmost application reads CFBundleName /
+# CFBundleDisplayName from the built bundle — that is the string that lands in an
+# activity tracker's app log, in the Dock, and in the ⌘-Tab switcher. productName
+# above sets both. An unpackaged dev run still reports "Electron" because it is
+# literally running out of Electron.app; only a packaged build carries this name.
+
+directories:
+  output: dist
+  buildResources: build
+
+# Signs the Swift sidecar and re-seals the bundle. electron-builder treats
+# extraResources as opaque files, so without this the helper ships unsigned —
+# notarization rejects it, and the Accessibility grant attaches to the helper
+# instead of to Vellum Studio.
+afterSign: build/after-sign.cjs
+
+files:
+  - src/**/*
+  - dist-renderer/**/*
+  - package.json
+  - "!**/*.test.js"
+  - "!src/renderer/**/*.jsx"
+  - "!src/renderer/*.css"
+  - "!src/renderer/index.html"
+
+extraResources:
+  # The sidecar lands in Contents/Resources/vellum-input, which is where
+  # device.js looks first. Being inside the bundle is also what makes the
+  # Accessibility grant attach to Vellum Studio rather than to a loose helper
+  # binary sitting in a build directory.
+  #
+  # `npm run dist` builds it universal (arm64 + x86_64). The same file is copied
+  # into every arch's bundle, so an arm64-only helper would have shipped inside
+  # the Intel app and failed to launch there with nothing to explain why.
+  - from: native/VellumInput/dist/vellum-input
+    to: vellum-input
+
+  - from: scripts
+    to: scripts
+    filter:
+      - "**/*"
+
+mac:
+  category: public.app-category.graphics-design
+  icon: build/icon.icns
+  # Apple Silicon only. Dropping x64 halves the build time and the release size;
+  # the sidecar stays universal anyway, so adding Intel back later is a one-word
+  # change here rather than a rebuild of the native layer.
+  target:
+    - target: dmg
+      arch: [arm64]
+
+  # App Sandbox has to stay off. It blocks posting input events to other
+  # processes, which is the entire function of this app — a sandboxed build
+  # installs, launches, and silently does nothing.
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+  # Off for local builds — notarization is a round trip to Apple that takes
+  # minutes, and it has nothing to say about whether the app works. CI turns it
+  # on with `--config.mac.notarize=true`, reading APPLE_ID,
+  # APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID from the environment.
+  notarize: false
+
+  extendInfo:
+    # Deliberately a normal Dock app rather than LSUIElement.
+    #
+    # A menu-bar-only process is harder to notice, but it is also the shape a
+    # utility takes, and it looks wrong for something calling itself an
+    # illustration tool. An art app sitting in the Dock is unremarkable — it is
+    # what a screenshot of a designer's machine looks like. Nothing about being in
+    # the Dock reaches an activity tracker, which only records the app in front.
+    LSUIElement: false
+    NSAppleEventsUsageDescription: >-
+      Vellum Studio uses this to bring your reference applications to the front.
+
+dmg:
+  title: Vellum Studio
