@@ -51,22 +51,6 @@ Applications folder, and open it.
 Grant Accessibility when prompted, pick your reference applications, and get to
 work.
 
-## Building
-
-```bash
-npm install
-npm run build          # Swift input layer, icon, renderer
-npm run dev            # run it
-npm test               # the scheduler model
-npm run dist           # signed .app + .dmg
-```
-
-The pointer engine is Swift, talking to the Electron shell over framed JSON on
-stdio. It lives in `native/VellumInput`. Stroke shaping — Fitts-derived
-durations, Bézier curvature, minimum-jerk velocity, corrective sub-movements,
-overshoot, value-noise tremor — is all in `Mouse.swift`, and is genuinely the
-most interesting file here.
-
 ## A note on the brush engine
 
 The stroke model is real. Pointer paths are generated from a Fitts's law duration
