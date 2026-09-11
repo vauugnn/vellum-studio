@@ -12,6 +12,12 @@ on:
         type: boolean
         default: true
 
+# The default token is read-only, so creating a release failed with "Resource not
+# accessible by integration" after an otherwise clean build. Only the release step
+# needs more than read.
+permissions:
+  contents: write
+
 jobs:
   macos:
     # macOS runner is not optional: the sidecar is Swift against AppKit and
