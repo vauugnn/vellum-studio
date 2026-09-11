@@ -72,13 +72,40 @@ jobs:
         run: |
           if [ -n "$CSC_LINK" ] && [ "$SKIP_SIGNING" != "true" ]; then
             echo "signed=true" >> "$GITHUB_OUTPUT"
-            npx electron-builder --mac --publish never --config.mac.notarize=true
+            # Sign only. electron-builder's own notarize step submits the .app and
+            # then builds the DMG around it, so the DMG is never itself submitted
+            # and nothing ends up stapled — it reported "notarization successful"
+            # while producing an artifact with no ticket on it. The next step
+            # notarizes the finished DMG instead, which is the flow that works
+            # by hand.
+            npx electron-builder --mac --publish never --config.mac.notarize=false
           else
             echo "signed=false" >> "$GITHUB_OUTPUT"
             echo "::warning::No signing certificate — building unsigned"
             npx electron-builder --mac --publish never \
               --config.mac.identity=null --config.mac.notarize=false
           fi
+
+      - name: Notarize and staple
+        if: steps.package.outputs.signed == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          DMG=$(ls dist/*.dmg | head -1)
+          echo "submitting $(basename "$DMG")"
+
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          # Stapling is the part that matters offline. Notarization alone means
+          # Apple approved the build; a Mac with no internet cannot check that,
+          # so without the stapled ticket it still shows a Gatekeeper warning.
+          xcrun stapler staple "$DMG"
 
       - name: Verify the bundle
         run: |
