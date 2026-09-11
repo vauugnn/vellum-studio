@@ -17,7 +17,7 @@
     "dev:electron": "wait-on tcp:5273 && VITE_DEV_SERVER_URL=http://localhost:5273 electron .",
     "install:electron": "node node_modules/electron/install.js",
     "build:renderer": "vite build",
-    "build:icon": "swiftc -O -swift-version 5 -target arm64-apple-macos13.0 -framework AppKit -o native/Icon/dist/make-icon native/Icon/make-icon.swift && ./native/Icon/dist/make-icon build/icon.iconset && iconutil -c icns build/icon.iconset -o build/icon.icns",
+    "build:icon": "mkdir -p native/Icon/dist && swiftc -O -swift-version 5 -target arm64-apple-macos13.0 -framework AppKit -o native/Icon/dist/make-icon native/Icon/make-icon.swift && ./native/Icon/dist/make-icon build/icon.iconset && iconutil -c icns build/icon.iconset -o build/icon.icns",
     "build": "npm run build:native && npm run build:icon && npm run build:renderer",
     "dist": "npm run build:native:universal && npm run build:icon && npm run build:renderer && electron-builder --mac",
     "notarize": "xcrun notarytool submit dist/*.dmg --keychain-profile vellum-notary --wait",
