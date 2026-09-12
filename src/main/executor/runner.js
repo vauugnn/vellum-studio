@@ -10,7 +10,9 @@
 
 import path from "node:path";
 
-import { load, SETTINGS_PATH, SCRIPTS_DIR } from "./config.js";
+import {
+  load, targetMinutes as configuredTarget, SETTINGS_PATH, SCRIPTS_DIR,
+} from "./config.js";
 import { personalityFor, summarize } from "./personality.js";
 import {
   planSegment, segmentStartFor, sessionState, SEGMENT_MS, MINUTE_MS,
@@ -770,11 +772,47 @@ export class Runner {
     }
   }
 
+  /**
+   * How many actions one burst performs.
+   *
+   * Scored presence needs a single event to claim a minute, so a burst used to be
+   * exactly one action — at "busy" that came to eight strokes of about 1.5s each
+   * per ten minutes, twelve seconds of movement in six hundred. It satisfied the
+   * measurement and looked completely dead, because nobody working moves once a
+   * minute and then freezes.
+   *
+   * The count follows the level: roughly half the target minute count, jittered.
+   * Light stays sparse, busy fills the minute the way being busy actually does.
+   */
+  #actionsPerBurst() {
+    const base = Math.max(1, Math.round(configuredTarget(this.cfg) / 2));
+    return Math.max(1, base + randInt(-1, 1));
+  }
+
+  /** A follow-up action inside a burst — never another app switch. */
+  #followUpKind() {
+    if (this.cfg.actions.scroll && chance(0.4)) return "scroll";
+    return "move";
+  }
+
   async #perform(burst) {
     // A configured script takes over the burst entirely.
     if (this.script) return this.runScript(this.script);
 
-    switch (burst.kind) {
+    const count = this.#actionsPerBurst();
+    for (let i = 0; i < count; i++) {
+      if (this.#stopping || this.#paused) return;
+
+      // The planned kind leads; the rest are moves and scrolls around it, so a
+      // burst reads as a stretch of working rather than one isolated twitch.
+      await this.#performOne(i === 0 ? burst.kind : this.#followUpKind());
+
+      if (i < count - 1) await sleep(randInt(900, 4000));
+    }
+  }
+
+  async #performOne(kind) {
+    switch (kind) {
       case "switchApp": {
         const app = this.#nextApp();
         if (!app) return this.#moveSomewhere();
