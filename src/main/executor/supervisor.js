@@ -52,15 +52,23 @@ export class Supervisor {
     // nowhere else. Forward it to the terminal as well as to the UI — without
     // this, `npm run dev` is silent about everything the executor is doing, and
     // diagnosing it means re-running the whole thing headless.
-    const forward = (level) => (d) => {
+    //
+    // stdout is mirrored to the terminal ONLY. The executor already posts every
+    // log entry as a structured message, so relaying its stdout to the UI as well
+    // showed each line twice — the copy from stdout carried no timestamp and
+    // rendered as "Invalid". stderr is different: it is where an uncaught
+    // failure lands, bypassing the logger entirely, so that one does go to the
+    // UI, with a timestamp attached here.
+    this.#child.stdout?.on("data", (d) => {
+      const text = d.toString().trimEnd();
+      if (text) process.stdout.write(`${text}\n`);
+    });
+    this.#child.stderr?.on("data", (d) => {
       const text = d.toString().trimEnd();
       if (!text) return;
-      process[level === "error" ? "stderr" : "stdout"].write(`${text}\n`);
-      this.onMessage({ type: "log", level, msg: text });
-    };
-
-    this.#child.stdout?.on("data", forward("info"));
-    this.#child.stderr?.on("data", forward("error"));
+      process.stderr.write(`${text}\n`);
+      this.onMessage({ type: "log", level: "error", msg: text, at: Date.now() });
+    });
 
     this.#child.on("exit", (code) => {
       this.#child = null;
