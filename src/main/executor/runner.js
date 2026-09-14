@@ -618,8 +618,11 @@ export class Runner {
         // A burst whose minute has already elapsed (because we were paused, or
         // just resumed) is not worth doing — the minute is gone and the resume
         // burst already covered the present one.
+        // Likewise one with only a few seconds left: a burst now runs to the end
+        // of its minute, and a stroke started this close to the boundary would
+        // land its events in the next one.
         const minuteEnd = plannedSegment.segmentStart + (burst.minute + 1) * MINUTE_MS;
-        if (Date.now() >= minuteEnd) { i++; continue; }
+        if (Date.now() >= minuteEnd - 4000) { i++; continue; }
 
         // Step away from the desk now and then. Costs the minutes it covers,
         // which is the point — a day with no gaps in it does not look like a day.
@@ -633,7 +636,7 @@ export class Runner {
         }
 
         try {
-          await this.#perform(burst);
+          await this.#perform(burst, minuteEnd);
           this.#burstsSinceBreak++;
           lastBurstAt = Date.now();
         } catch (e) {
@@ -786,33 +789,17 @@ export class Runner {
   }
 
   /**
-   * How many actions one burst performs.
+   * The pause between two actions inside a burst.
    *
-   * Scored presence needs a single event to claim a minute, so a burst used to be
-   * exactly one action — at "busy" that came to eight strokes of about 1.5s each
-   * per ten minutes, twelve seconds of movement in six hundred. It satisfied the
-   * measurement and looked completely dead, because nobody working moves once a
-   * minute and then freezes.
-   *
-   * The count follows the level: roughly half the target minute count, jittered.
-   * Light stays sparse, busy fills the minute the way being busy actually does.
+   * Mostly short — the cursor is doing something most of the time — with the
+   * occasional longer stop, which is someone reading what they just landed on.
+   * A burst used to be a fixed dozen actions, about thirty seconds, placed
+   * anywhere in its minute; the rest of the minute was dead air, and two of
+   * those in a row read as the app having stopped. The clock decides the count
+   * now (see #perform), so this only decides the rhythm.
    */
-  /**
-   * How full a burst is: how many actions, and how tightly packed.
-   *
-   * Derived from the level rather than fixed. The first version did roughly half
-   * the target minute count with 0.9-4s gaps, which at "busy" was four actions
-   * over ten seconds followed by fifty seconds of nothing, once a minute — the
-   * dead air was the whole complaint. Heads-down means the cursor is doing
-   * something most of the time, not twitching on a schedule.
-   *
-   * At busy this fills most of the minute; at light it stays genuinely sparse,
-   * because light should look like someone barely at the desk.
-   */
-  #burstProfile() {
-    // Heads-down, the only mode: around a dozen actions with short gaps, so a
-    // burst fills most of its minute rather than twitching once and stopping.
-    return { actions: 12 + randInt(-1, 2), gapMin: 500, gapMax: 1800 };
+  #actionGap() {
+    return Math.random() < 0.12 ? randInt(2500, 6000) : randInt(500, 1800);
   }
 
   /** A follow-up action inside a burst — never another app switch. */
@@ -825,7 +812,9 @@ export class Runner {
     // extra switch, and combined with the cooldown fallback that produced runs
     // like Zed → Discord → Zed inside eight seconds — thirteen of forty switches
     // in one session landed within ten seconds of the previous one.
-    if (this.cfg.actions.switchApps && this.cfg.apps.length > 1 && r < 0.05) return "switchApp";
+    // 2% now that a burst runs the whole minute: at 5% a minute's worth of
+    // actions averaged more than one extra switch on top of the planned one.
+    if (this.cfg.actions.switchApps && this.cfg.apps.length > 1 && r < 0.02) return "switchApp";
     if (this.cfg.actions.scroll && r < 0.37) return "scroll";
     return "move";
   }
@@ -856,27 +845,35 @@ export class Runner {
     return best;
   }
 
-  async #perform(burst) {
+  /**
+   * Work until `until` — the end of the burst's minute, or a short stretch for
+   * the opening and resume bursts, which belong to no planned minute.
+   *
+   * The count is decided by the clock rather than fixed, so an active minute is
+   * active for the whole minute and adjacent ones run into each other. The only
+   * silences left are the planned quiet minutes and the breaks.
+   */
+  async #perform(burst, until = Date.now() + 25_000) {
     // A configured script takes over the burst entirely.
     if (this.script) return this.runScript(this.script);
 
-    const { actions, gapMin, gapMax } = this.#burstProfile();
-    for (let i = 0; i < actions; i++) {
-      if (this.#stopping || this.#paused) return;
-
+    for (let i = 0; !this.#stopping && !this.#paused; i++) {
       // The planned kind leads; the rest are moves, nudges and scrolls around it,
       // so a burst reads as a stretch of working rather than one isolated twitch.
       await this.#performOne(i === 0 ? burst.kind : this.#followUpKind());
 
-      // Pause-aware gap. A burst now runs a dozen actions, so a plain sleep here
-      // meant the loop could not notice you had started typing until the gap
-      // expired — the difference between getting out of the way and appearing to
-      // ignore you.
-      if (i < actions - 1) {
-        const until = Date.now() + randInt(gapMin, gapMax);
-        while (Date.now() < until && !this.#stopping && !this.#paused) {
-          await sleep(Math.min(150, until - Date.now()));
-        }
+      // Stop when the next stroke would not finish inside the minute. One runs
+      // about a second and a half; the margin keeps its events out of the next
+      // minute, where they would score the wrong one.
+      const gap = this.#actionGap();
+      if (Date.now() + gap + 2500 > until) return;
+
+      // Pause-aware gap. A plain sleep here meant the loop could not notice you
+      // had started typing until the gap expired — the difference between
+      // getting out of the way and appearing to ignore you.
+      const wake = Date.now() + gap;
+      while (Date.now() < wake && !this.#stopping && !this.#paused) {
+        await sleep(Math.min(150, wake - Date.now()));
       }
     }
   }

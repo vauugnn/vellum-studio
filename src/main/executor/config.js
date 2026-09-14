@@ -37,7 +37,7 @@ export const SCRIPTS_DIR = path.join(APP_DIR, "scripts");
  * someone working — which nobody ever wanted. The ceiling of 9 lives in the
  * scheduler; an unbroken 100% is the one pattern that reads as automated.
  */
-export const TARGET_MINUTES = 8;
+export const TARGET_MINUTES = 9;
 
 export const DEFAULTS = {
   running: false,
@@ -109,9 +109,9 @@ export const DEFAULTS = {
       [0.15, 9000, 20000],
       [0.05, 20000, 40000],
     ],
-    breakEvery: 30,
-    breakMinSec: 30,
-    breakMaxSec: 90,
+    breakEvery: 40,
+    breakMinSec: 20,
+    breakMaxSec: 50,
 
     // Scheduling.
     segmentVarianceSigma: 1.4,

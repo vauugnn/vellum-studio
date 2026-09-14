@@ -198,17 +198,20 @@ export function planSegment({
   const minutes = pickMinutes(rng, scaled, maxGapMinutes, span, firstMinute);
   const gapForced = minutes.length > scaled;
 
-  // Place one burst somewhere inside each active minute. The 2s/57s inset keeps
-  // a burst from straddling the minute boundary and landing its events in the
-  // neighbouring minute, which would score the wrong one.
+  // One burst per active minute, starting at the top of it.
+  //
+  // It used to start anywhere inside the minute, which was right when a burst
+  // was a single stroke — one event claims the minute wherever it lands. Now a
+  // burst runs until its minute ends, so a late start just shortened it and
+  // left a hole before it: two adjacent active minutes could sit either side
+  // of eighty quiet seconds. Starting at the top makes adjacent minutes flow
+  // into one another, which is what heads-down looks like.
   const bursts = minutes.map((m) => {
-    // Keep the burst clear of the minute's edges so its events cannot spill into
-    // the neighbouring minute and score the wrong one — and, in the minute we
-    // are currently inside, clear of the present as well.
     const minuteStart = segmentStart + m * MINUTE_MS;
-    const lo = Math.max(2000, notBefore == null ? 2000 : notBefore - minuteStart + 1500);
+    // In the minute we are currently inside, start just after now instead.
+    const lo = Math.max(0, notBefore == null ? 0 : notBefore - minuteStart + 1500);
     return {
-      at: minuteStart + randInt(rng, Math.min(lo, 56000), 57000),
+      at: minuteStart + Math.min(lo + randInt(rng, 0, 3000), 57000),
       minute: m,
       kind: pickKind(rng, cfg),
       filler: false,
