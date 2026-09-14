@@ -405,8 +405,20 @@ export class Runner {
     const until = Date.now() + this.cfg.resumeAfterSeconds * 1000;
     if (until <= this.#pausedUntil) return; // already paused at least this long
 
+    const wasPaused = this.#paused;
     this.#pausedUntil = until;
-    logger.info(`human input (${msg.kind}) — pausing ${this.cfg.resumeAfterSeconds}s`);
+
+    // The guard is always armed, so this fires for every keystroke and every
+    // trackpad flick whether or not a session is on. Stopped, none of it is
+    // news: the hold is kept current so pressing Start mid-sentence still
+    // waits, but nothing is logged and nothing is cut.
+    if (this.#gate !== null) return;
+
+    // One line when a hold begins, none for the stream of events that extend
+    // it. Logging each one filled the panel with the user's own typing.
+    if (!wasPaused) {
+      logger.info(`you're using the computer (${msg.kind}) — holding until ${this.cfg.resumeAfterSeconds}s of quiet`);
+    }
     // Cut whatever stroke is in flight rather than finishing it over the top of
     // the user's own cursor.
     this.#device?.call("abort").catch(() => {});
