@@ -784,30 +784,86 @@ export class Runner {
    * The count follows the level: roughly half the target minute count, jittered.
    * Light stays sparse, busy fills the minute the way being busy actually does.
    */
-  #actionsPerBurst() {
-    const base = Math.max(1, Math.round(configuredTarget(this.cfg) / 2));
-    return Math.max(1, base + randInt(-1, 1));
+  /**
+   * How full a burst is: how many actions, and how tightly packed.
+   *
+   * Derived from the level rather than fixed. The first version did roughly half
+   * the target minute count with 0.9-4s gaps, which at "busy" was four actions
+   * over ten seconds followed by fifty seconds of nothing, once a minute — the
+   * dead air was the whole complaint. Heads-down means the cursor is doing
+   * something most of the time, not twitching on a schedule.
+   *
+   * At busy this fills most of the minute; at light it stays genuinely sparse,
+   * because light should look like someone barely at the desk.
+   */
+  #burstProfile() {
+    const target = configuredTarget(this.cfg);          // 4 light, 6 normal, 8 busy
+    const density = Math.min(1, Math.max(0, (target - 3) / 5));  // 0.2 … 1.0
+
+    const actions = Math.max(
+      1,
+      Math.round(2 + density * 10) + randInt(-1, 2)     // ~2 light … ~12 busy
+    );
+    // Gaps close up as density rises: unhurried at light, near-continuous at busy.
+    const gapMax = Math.round(6500 - density * 4700);   // 5.6s light … 1.8s busy
+    const gapMin = Math.round(gapMax * 0.28);
+
+    return { actions, gapMin, gapMax };
   }
 
   /** A follow-up action inside a burst — never another app switch. */
   #followUpKind() {
-    if (this.cfg.actions.scroll && chance(0.4)) return "scroll";
-    return "move";
+    return this.cfg.actions.scroll && chance(0.25) ? "scroll" : "move";
+  }
+
+  /**
+   * A landing point well away from where the cursor already is.
+   *
+   * Points used to be drawn biased toward the middle of the window, which kept
+   * consecutive targets close together and made every move a short hop. Sampling
+   * candidates and taking the farthest gives long, obvious traverses — which is
+   * both what reads as activity and what a person crossing a window actually
+   * does.
+   */
+  #farPointIn(rect, from, pad) {
+    const p = Math.min(pad, Math.min(rect.w, rect.h) / 2 - 4);
+    let best = null, bestDist = -1;
+
+    for (let i = 0; i < 6; i++) {
+      const c = {
+        x: rect.x + p + Math.random() * (rect.w - 2 * p),
+        y: rect.y + p + Math.random() * (rect.h - 2 * p),
+      };
+      const d = from
+        ? Math.hypot(c.x - from.x, c.y - from.y)
+        : Math.random();
+      if (d > bestDist) { bestDist = d; best = c; }
+    }
+    return best;
   }
 
   async #perform(burst) {
     // A configured script takes over the burst entirely.
     if (this.script) return this.runScript(this.script);
 
-    const count = this.#actionsPerBurst();
-    for (let i = 0; i < count; i++) {
+    const { actions, gapMin, gapMax } = this.#burstProfile();
+    for (let i = 0; i < actions; i++) {
       if (this.#stopping || this.#paused) return;
 
-      // The planned kind leads; the rest are moves and scrolls around it, so a
-      // burst reads as a stretch of working rather than one isolated twitch.
+      // The planned kind leads; the rest are moves, nudges and scrolls around it,
+      // so a burst reads as a stretch of working rather than one isolated twitch.
       await this.#performOne(i === 0 ? burst.kind : this.#followUpKind());
 
-      if (i < count - 1) await sleep(randInt(900, 4000));
+      // Pause-aware gap. A burst now runs a dozen actions, so a plain sleep here
+      // meant the loop could not notice you had started typing until the gap
+      // expired — the difference between getting out of the way and appearing to
+      // ignore you.
+      if (i < actions - 1) {
+        const until = Date.now() + randInt(gapMin, gapMax);
+        while (Date.now() < until && !this.#stopping && !this.#paused) {
+          await sleep(Math.min(150, until - Date.now()));
+        }
+      }
     }
   }
 
@@ -909,12 +965,20 @@ export class Runner {
       logger.warn(`${app.name}: ${w.error ?? "no window"} — moving on screen instead`);
       return this.#moveAnywhereOnScreen();
     }
-    const res = await this.#device.call(
-      "mouse.moveWithin",
-      { rect: w.rect, pad: 60, ...this.#moveOptions() },
+    const res = await this.#moveFarWithin(w.rect, 60);
+    this.#afterMove(res, app.name);
+  }
+
+  /** Cross the window to a point well away from the cursor's current spot. */
+  async #moveFarWithin(rect, pad) {
+    const pos = await this.#device.call("mouse.pos");
+    const target = this.#farPointIn(rect, pos.ok === false ? null : pos, pad);
+
+    return this.#device.call(
+      "mouse.moveTo",
+      { x: Math.round(target.x), y: Math.round(target.y), ...this.#moveOptions() },
       { timeoutMs: 20_000 }
     );
-    this.#afterMove(res, app.name);
   }
 
   /** Move inside whatever app the rotation is currently on, or on screen if that
@@ -928,11 +992,7 @@ export class Runner {
     if (app) {
       const w = await this.#device.call("apps.frontWindow", { bundleId: app.bundleId });
       if (w.ok !== false && w.rect) {
-        const res = await this.#device.call(
-          "mouse.moveWithin",
-          { rect: w.rect, pad: 80, ...this.#moveOptions() },
-          { timeoutMs: 20_000 }
-        );
+        const res = await this.#moveFarWithin(w.rect, 70);
         return this.#afterMove(res, app.name);
       }
       // Falling back is fine, silently falling back is not — a permanently
