@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { validate, MAX_BUSY_PERCENT } from "./config.js";
+import { validate, TARGET_MINUTES } from "./config.js";
 import { personalityFor } from "./personality.js";
 import {
   planSegment, pickMinutes, segmentStartFor, sessionState,
@@ -23,7 +23,6 @@ function seeded(seed = 1) {
 
 const personality = personalityFor("test-machine");
 const baseCfg = validate({
-  busyLevel: "normal",
   apps: [{ bundleId: "com.apple.finder", name: "Finder" }],
 });
 
@@ -66,41 +65,25 @@ test("every burst lands inside the minute it is credited to", () => {
   }
 });
 
-test("activity tracks the configured busy level", () => {
-  for (const [level, expected] of [["light", 40], ["normal", 60], ["busy", 80]]) {
-    const cfg = validate({ busyLevel: level, apps: baseCfg.apps });
-    const plans = simulate(cfg);
-    const avg = plans.reduce((s, p) => s + p.activityPercent, 0) / plans.length;
-    // The busy level is the average the user gets, not a ceiling — the session
-    // curve is normalised so its arc redistributes activity without shrinking it.
-    assert.ok(Math.abs(avg - expected) < 8,
-      `${level}: average ${avg.toFixed(1)}% should sit near the configured ${expected}%`);
-  }
+test("activity lands on the target", () => {
+  const plans = simulate(baseCfg);
+  const avg = plans.reduce((s, p) => s + p.activityPercent, 0) / plans.length;
+  const expected = TARGET_MINUTES * 10;
+  // The target is the average the user gets, not a ceiling — the session curve
+  // is normalised so its arc redistributes activity without shrinking it.
+  assert.ok(Math.abs(avg - expected) < 8,
+    `average ${avg.toFixed(1)}% should sit near ${expected}%`);
 });
 
 test("no segment ever reads 100%", () => {
-  for (const level of ["light", "normal", "busy"]) {
-    const cfg = validate({ busyLevel: level, apps: baseCfg.apps });
-    for (const plan of simulate(cfg)) {
-      assert.ok(plan.activeMinutes <= MAX_ACTIVE_MINUTES,
-        `${level} produced a ${plan.activityPercent}% segment`);
-    }
-  }
-});
-
-test("custom busy percent is capped", () => {
-  assert.throws(() => validate({ busyLevel: "custom", customBusyPercent: 100 }),
-    /customBusyPercent out of range/);
-  const cfg = validate({ busyLevel: "custom", customBusyPercent: MAX_BUSY_PERCENT });
-  for (const plan of simulate(cfg, 200)) {
-    assert.ok(plan.activeMinutes <= MAX_ACTIVE_MINUTES);
+  for (const plan of simulate(baseCfg)) {
+    assert.ok(plan.activeMinutes <= MAX_ACTIVE_MINUTES,
+      `produced a ${plan.activityPercent}% segment`);
   }
 });
 
 test("no gap between bursts exceeds the idle limit", () => {
-  // "light" is the worst case: fewest planned minutes, so the gap filler is what
-  // is actually keeping the stream continuous.
-  const cfg = validate({ busyLevel: "light", apps: baseCfg.apps });
+  const cfg = validate({ apps: baseCfg.apps });
   const idleMs = cfg.advanced.idleLimitSec * 1000;
   const plans = simulate(cfg);
 
@@ -272,7 +255,7 @@ test("a session opens with a burst within seconds of starting", () => {
 });
 
 test("the opener never pushes a segment past the activity ceiling", () => {
-  const cfg = validate({ busyLevel: "busy", apps: baseCfg.apps });
+  const cfg = validate({ apps: baseCfg.apps });
   const segmentStart = segmentStartFor(new Date("2026-08-10T14:40:00").getTime());
 
   for (let i = 0; i < 200; i++) {
@@ -355,29 +338,22 @@ test("the opener falls back to a move when switching is off", () => {
   assert.equal(plan.bursts[0].kind, "move");
 });
 
-test("a level delivers what it promises from the first minute of a session", () => {
+test("the target is delivered from the first minute of a session", () => {
   // The warm-up used to start at 0.35 and take 40 minutes to reach full pace,
-  // sized for an eight-hour day. On an on-demand session that meant "busy"
-  // planned three minutes out of ten at the start — a third of what was asked
-  // for — and the setting simply did not mean what it said.
+  // which meant the opening segment planned three minutes out of ten.
   const start = segmentStartFor(new Date("2026-08-10T09:00:00").getTime());
-
-  for (const [level, expected] of [["light", 40], ["normal", 60], ["busy", 80]]) {
-    const cfg = validate({ busyLevel: level });
-    // The opening segment, planned at session minute zero.
-    const plan = planSegment({
-      cfg, personality, segmentStart: start, sessionStart: start, rng: seeded(5),
-    });
-    assert.ok(Math.abs(plan.activityPercent - expected) <= 20,
-      `${level} opened at ${plan.activityPercent}%, expected near ${expected}%`);
-  }
+  const plan = planSegment({
+    cfg: baseCfg, personality, segmentStart: start, sessionStart: start, rng: seeded(5),
+  });
+  assert.ok(Math.abs(plan.activityPercent - TARGET_MINUTES * 10) <= 20,
+    `opened at ${plan.activityPercent}%, expected near ${TARGET_MINUTES * 10}%`);
 });
 
-test("denser levels are not allowed to leave long holes", () => {
+test("a segment is not allowed to leave long holes", () => {
   // A plan can hit its minute count and still read as nothing happening if it
   // clusters everything and leaves a four-minute gap. The gap ceiling tightens
   // as the requested density rises.
-  const cfg = validate({ busyLevel: "busy" });
+  const cfg = validate({});
   const start = segmentStartFor(new Date("2026-08-10T10:00:00").getTime());
 
   const gaps = [];
@@ -440,7 +416,7 @@ test("running without a start stamp begins now rather than refusing", () => {
 test("elapsed time drives the activity curve, not the time of day", () => {
   // The same session minute must plan the same way whether it falls at 9am or
   // 3am — there is no longer any such thing as a good or bad hour to run.
-  const cfg = validate({ busyLevel: "normal" });
+  const cfg = validate({});
   const shapeAt = (iso) => {
     const start = segmentStartFor(new Date(iso).getTime());
     return planSegment({

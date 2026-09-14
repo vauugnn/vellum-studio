@@ -1,7 +1,7 @@
 // Settings: load, validate, defaults.
 //
 // Two layers by design. The top level is written in the words a person would use
-// to describe what they want ("busyLevel", "actions.moveMouse", "runForMinutes"), and
+// to describe what they want ("actions.moveMouse", "runForMinutes"), and
 // everything with a unit or a Greek letter in it lives under `advanced`, which the
 // UI keeps collapsed. Nothing is unreachable — advanced is a plain object in the
 // same file, hand-editable.
@@ -28,17 +28,19 @@ export const SETTINGS_PATH = path.join(APP_DIR, "settings.json");
  */
 export const SCRIPTS_DIR = path.join(APP_DIR, "scripts");
 
-/** Active minutes per 10-minute segment for each named level. */
-export const BUSY_LEVELS = { light: 4, normal: 6, busy: 8 };
-
-/** Hard ceiling on activity. A workday of unbroken 100% is not a human pattern —
- *  it is the signature every reviewer of these numbers already knows. */
-export const MAX_BUSY_PERCENT = 90;
+/**
+ * Active minutes per 10-minute segment. One mode, heads-down.
+ *
+ * There used to be light / normal / busy plus a custom percentage. Three knobs
+ * that all meant "how alive should it look" was a knob too many, and every one
+ * of them below the top setting was a request for the app to look less like
+ * someone working — which nobody ever wanted. The ceiling of 9 lives in the
+ * scheduler; an unbroken 100% is the one pattern that reads as automated.
+ */
+export const TARGET_MINUTES = 8;
 
 export const DEFAULTS = {
   running: false,
-  busyLevel: "normal",
-  customBusyPercent: 60,
 
   // Which behaviour script drives a burst. null = the built-in behaviour the
   // settings above describe. A script takes over the whole burst and can do
@@ -226,13 +228,9 @@ export function validate(raw = {}) {
   const a = raw.advanced ?? {};
   const da = d.advanced;
 
-  const busyLevel = oneOf(raw.busyLevel, d.busyLevel, [...Object.keys(BUSY_LEVELS), "custom"], "busyLevel");
-
   const cfg = {
     running: bool(raw.running, d.running, "running"),
-    busyLevel,
     script: typeof raw.script === "string" && raw.script ? raw.script : null,
-    customBusyPercent: int(raw.customBusyPercent, d.customBusyPercent, 10, MAX_BUSY_PERCENT, "customBusyPercent"),
 
     actions: {
       moveMouse: bool(raw.actions?.moveMouse, d.actions.moveMouse, "actions.moveMouse"),
@@ -289,10 +287,10 @@ export function validate(raw = {}) {
   return cfg;
 }
 
-/** Target active minutes per 10-minute segment for the configured busy level. */
-export function targetMinutes(cfg) {
-  if (cfg.busyLevel === "custom") return (cfg.customBusyPercent / 100) * 10;
-  return BUSY_LEVELS[cfg.busyLevel];
+/** Target active minutes per 10-minute segment. Kept as a function so the
+ *  scheduler's call site did not have to change when the levels went. */
+export function targetMinutes() {
+  return TARGET_MINUTES;
 }
 
 export function load(file = SETTINGS_PATH) {

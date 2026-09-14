@@ -58,7 +58,6 @@ declare namespace Vellum {
 
   interface Config {
     running: boolean;
-    busyLevel: "light" | "normal" | "busy" | "custom";
     actions: {
       moveMouse: boolean;
       switchApps: boolean;

@@ -10,9 +10,7 @@
 
 import path from "node:path";
 
-import {
-  load, targetMinutes as configuredTarget, SETTINGS_PATH, SCRIPTS_DIR,
-} from "./config.js";
+import { load, SETTINGS_PATH, SCRIPTS_DIR } from "./config.js";
 import { personalityFor, summarize } from "./personality.js";
 import {
   planSegment, segmentStartFor, sessionState, SEGMENT_MS, MINUTE_MS,
@@ -34,6 +32,7 @@ export class Runner {
   #stopping = false;
   #pausedUntil = 0;
   #appCooldown = new Map();   // bundleId -> epoch ms until usable again
+  #leftAt = new Map();        // bundleId -> epoch ms we last switched away from it
   #currentApp = null;
   #burstsSinceBreak = 0;
   // null | "stopped" | "finished" — why nothing is happening, when nothing is
@@ -760,7 +759,12 @@ export class Runner {
       const byStalest = [...apps].sort(
         (a, b) => (this.#appCooldown.get(a.bundleId) ?? 0) - (this.#appCooldown.get(b.bundleId) ?? 0)
       );
-      available = byStalest.filter((a) => a.name !== this.#currentApp);
+      // Never bounce straight back to the app just left, even when everything
+      // is cooling — that is the ping-pong, and with three apps this fallback
+      // is the usual path, so the exclusion has to live here.
+      const notJustLeft = (a) => now - (this.#leftAt.get(a.bundleId) ?? 0) > 20_000;
+      available = byStalest.filter((a) => a.name !== this.#currentApp && notJustLeft(a));
+      if (!available.length) available = byStalest.filter((a) => a.name !== this.#currentApp);
       if (!available.length) available = byStalest;
     }
 
@@ -843,18 +847,9 @@ export class Runner {
    * because light should look like someone barely at the desk.
    */
   #burstProfile() {
-    const target = configuredTarget(this.cfg);          // 4 light, 6 normal, 8 busy
-    const density = Math.min(1, Math.max(0, (target - 3) / 5));  // 0.2 … 1.0
-
-    const actions = Math.max(
-      1,
-      Math.round(2 + density * 10) + randInt(-1, 2)     // ~2 light … ~12 busy
-    );
-    // Gaps close up as density rises: unhurried at light, near-continuous at busy.
-    const gapMax = Math.round(6500 - density * 4700);   // 5.6s light … 1.8s busy
-    const gapMin = Math.round(gapMax * 0.28);
-
-    return { actions, gapMin, gapMax };
+    // Heads-down, the only mode: around a dozen actions with short gaps, so a
+    // burst fills most of its minute rather than twitching once and stopping.
+    return { actions: 12 + randInt(-1, 2), gapMin: 500, gapMax: 1800 };
   }
 
   /** A follow-up action inside a burst — never another app switch. */
@@ -863,7 +858,11 @@ export class Runner {
     // A switch mid-burst, occasionally — someone flicking to another window to
     // check something and coming back. Only when there is more than one app to
     // flick between.
-    if (this.cfg.actions.switchApps && this.cfg.apps.length > 1 && r < 0.12) return "switchApp";
+    // 5%, down from 12%. At 12% a dozen-action burst averaged well over one
+    // extra switch, and combined with the cooldown fallback that produced runs
+    // like Zed → Discord → Zed inside eight seconds — thirteen of forty switches
+    // in one session landed within ten seconds of the previous one.
+    if (this.cfg.actions.switchApps && this.cfg.apps.length > 1 && r < 0.05) return "switchApp";
     if (this.cfg.actions.scroll && r < 0.37) return "scroll";
     return "move";
   }
@@ -933,6 +932,8 @@ export class Runner {
           return this.#moveSomewhere();
         }
 
+        const prev = this.cfg.apps.find((a) => a.name === this.#currentApp);
+        if (prev) this.#leftAt.set(prev.bundleId, Date.now());
         this.#currentApp = app.name;
         this.#appCooldown.set(
           app.bundleId, Date.now() + this.cfg.advanced.appCooldownMinutes * 60_000

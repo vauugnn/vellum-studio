@@ -3,12 +3,6 @@ import React, { useEffect, useRef } from "react";
 import { useStore } from "./store.js";
 import { Switch, Section, StatusDot, ActivityMeter } from "./components.jsx";
 
-const BUSY_LEVELS = [
-  ["light", "Light", "a quiet day"],
-  ["normal", "Normal", "steady, with breaks"],
-  ["busy", "Busy", "heads-down"],
-];
-
 export default function App() {
   const {
     settings, state, logs, apps, scripts, error, ready,
@@ -31,25 +25,6 @@ export default function App() {
             {error}
           </div>
         )}
-
-        <Section title="How busy should it look?">
-          <div className="flex gap-2">
-            {BUSY_LEVELS.map(([value, label, hint]) => (
-              <button
-                key={value}
-                onClick={() => patch({ busyLevel: value })}
-                className={`flex-1 rounded-md border px-3 py-2 text-left transition-colors ${
-                  settings.busyLevel === value
-                    ? "border-nib/60 bg-nib/10"
-                    : "border-ink-600 hover:border-ink-500"
-                }`}
-              >
-                <span className="block text-sm text-vellum-200">{label}</span>
-                <span className="hint">{hint}</span>
-              </button>
-            ))}
-          </div>
-        </Section>
 
         <Section title="What it's allowed to do">
           <Switch
