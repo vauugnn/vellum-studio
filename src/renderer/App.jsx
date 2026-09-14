@@ -7,7 +7,7 @@ import {
 
 export default function App() {
   const {
-    settings, state, logs, apps, scripts, error, ready,
+    settings, state, logs, apps, error, ready,
     init, patch, setAction, refreshApps,
   } = useStore();
 
@@ -67,32 +67,6 @@ export default function App() {
           action={<Action onClick={refreshApps}>refresh</Action>}
         >
           <AppPicker settings={settings} apps={apps} patch={patch} refreshApps={refreshApps} />
-        </Section>
-
-        <Section
-          title="Behaviour"
-          action={<Action onClick={() => window.vellum.scripts.reveal()}>open folder</Action>}
-        >
-          <Select
-            value={settings.script ?? ""}
-            onChange={(e) => patch({ script: e.target.value || null })}
-            className="mt-2"
-          >
-            <option value="">Built-in — follows the settings above</option>
-            {scripts.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </Select>
-          <p className="hint mt-2">
-            {settings.script
-              ? scripts.find((s) => s.id === settings.script)?.description
-                ?? "A script decides what each burst does. It still obeys the switches above."
-              : "Move, switch, scroll — mixed at random."}
-          </p>
-          <p className="hint mt-1">
-            Scripts are plain JavaScript files you can edit. Changes take effect on
-            the next burst — no restart.
-          </p>
         </Section>
 
         <Section title="When you use the computer">

@@ -28,7 +28,6 @@ export const useStore = create((set, get) => ({
       window.vellum.state.get(),
     ]);
     set({ settings, state, ready: true });
-    get().refreshScripts();
 
     window.vellum.settings.onChange((s) => set({ settings: s, error: null }));
     window.vellum.settings.onRejected(({ error }) => set({ error }));
@@ -53,11 +52,6 @@ export const useStore = create((set, get) => ({
 
   async refreshApps() {
     set({ apps: await window.vellum.apps.list() });
-  },
-
-  scripts: [],
-  async refreshScripts() {
-    set({ scripts: await window.vellum.scripts.list() });
   },
 
 }));
