@@ -1,7 +1,9 @@
 import React, { useEffect, useRef } from "react";
 
 import { useStore } from "./store.js";
-import { Switch, Section, StatusDot } from "./components.jsx";
+import {
+  Action, Button, Mark, Row, Scrub, Section, Select, StatusDot, Toggle,
+} from "./components.jsx";
 
 export default function App() {
   const {
@@ -12,49 +14,48 @@ export default function App() {
   useEffect(() => { init(); }, []);
 
   if (!ready || !settings) {
-    return <div className="grid h-full place-items-center text-sm text-vellum-400">loading…</div>;
+    return <div className="rail grid h-full place-items-center">loading</div>;
   }
 
   return (
-    <div className="flex h-full flex-col bg-ink-800">
+    <div className="flex h-full flex-col bg-graphite">
       <TitleBar state={state} settings={settings} patch={patch} />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && (
-          <div className="mx-5 mt-4 rounded border border-held/40 bg-held/10 px-3 py-2 text-xs text-held">
-            {error}
+          <div className="mx-5 mt-4 flex items-start gap-3 rounded border border-edge bg-panel px-3 py-2">
+            <span className="rail mt-[2px]">error</span>
+            <span className="text-body text-chalk">{error}</span>
           </div>
         )}
 
         <Section title="What it's allowed to do">
-          <Switch
+          <Toggle
             label="Move the mouse"
             hint="Moves the pointer the way a hand would — curved, uneven, never in a straight line."
             checked={settings.actions.moveMouse}
             onChange={(v) => setAction("moveMouse", v)}
           />
-          <Switch
+          <Toggle
             label="Switch between apps"
             hint="Brings one of the apps below to the front, then moves inside its window."
             checked={settings.actions.switchApps}
             onChange={(v) => setAction("switchApps", v)}
           />
-          <Switch
+          <Toggle
             label="Scroll now and then"
             hint="Short scrolls while it's sitting in an app."
             checked={settings.actions.scroll}
             onChange={(v) => setAction("scroll", v)}
           />
-          <Switch
+          <Toggle
             label="Press keys"
-            tone="risky"
             hint="Taps Shift only. It never types anything. Off by default — moving the mouse already counts, so this adds nothing."
             checked={settings.actions.pressKeys}
             onChange={(v) => setAction("pressKeys", v)}
           />
-          <Switch
+          <Toggle
             label="Click"
-            tone="risky"
             hint="Only on empty desktop space, never on a window. A click lands on whatever is under the pointer, so leave this off unless you have a reason."
             checked={settings.actions.click}
             onChange={(v) => setAction("click", v)}
@@ -63,41 +64,30 @@ export default function App() {
 
         <Section
           title="Apps to move between"
-          action={
-            <button className="hint no-drag hover:text-vellum-200" onClick={refreshApps}>
-              refresh
-            </button>
-          }
+          action={<Action onClick={refreshApps}>refresh</Action>}
         >
           <AppPicker settings={settings} apps={apps} patch={patch} refreshApps={refreshApps} />
         </Section>
 
         <Section
           title="Behaviour"
-          action={
-            <button
-              className="hint no-drag hover:text-vellum-200"
-              onClick={() => window.vellum.scripts.reveal()}
-            >
-              open folder
-            </button>
-          }
+          action={<Action onClick={() => window.vellum.scripts.reveal()}>open folder</Action>}
         >
-          <select
+          <Select
             value={settings.script ?? ""}
             onChange={(e) => patch({ script: e.target.value || null })}
-            className="w-full rounded border border-ink-600 bg-ink-700 px-2 py-1.5 text-sm text-vellum-200"
+            className="mt-2"
           >
             <option value="">Built-in — follows the settings above</option>
             {scripts.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
-          </select>
+          </Select>
           <p className="hint mt-2">
             {settings.script
               ? scripts.find((s) => s.id === settings.script)?.description
                 ?? "A script decides what each burst does. It still obeys the switches above."
-              : "Move, switch, scroll — mixed at random, on the schedule the busy level sets."}
+              : "Move, switch, scroll — mixed at random."}
           </p>
           <p className="hint mt-1">
             Scripts are plain JavaScript files you can edit. Changes take effect on
@@ -106,34 +96,27 @@ export default function App() {
         </Section>
 
         <Section title="When you use the computer">
-          <p className="hint mb-2">
-            It freezes the moment you touch the keyboard or trackpad, and stays
-            frozen for as long as you keep working.
-          </p>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-vellum-300">Picks back up</span>
-            <input
-              type="number"
+          <Row
+            label="Picks back up after"
+            hint="It freezes the moment you touch the keyboard or trackpad and stays frozen for as long as you keep working. Counted from the last thing you touched."
+          >
+            <Scrub
+              value={settings.resumeAfterSeconds}
               min={5}
               max={600}
-              value={settings.resumeAfterSeconds}
-              onChange={(e) => patch({ resumeAfterSeconds: Number(e.target.value) })}
-              className="w-16 rounded border border-ink-600 bg-ink-700 px-2 py-1 text-sm"
+              unit="s"
+              onChange={(v) => patch({ resumeAfterSeconds: v })}
             />
-            <span className="text-sm text-vellum-300">seconds after you stop</span>
-          </div>
+          </Row>
+          <p className="hint">
+            Drag the number sideways to change it — Shift for fine, Option for
+            coarse. Click it to type.
+          </p>
         </Section>
 
         <Section
           title="Log"
-          action={
-            <button
-              className="hint no-drag hover:text-vellum-200"
-              onClick={() => window.vellum.settings.reveal()}
-            >
-              settings file
-            </button>
-          }
+          action={<Action onClick={() => window.vellum.settings.reveal()}>settings file</Action>}
         >
           <LogStream logs={logs} />
         </Section>
@@ -143,23 +126,20 @@ export default function App() {
 }
 
 function TitleBar({ state, settings, patch }) {
+  // The left padding clears the traffic lights, which the inset title bar
+  // style leaves in place over our own chrome.
   return (
-    <header className="drag flex shrink-0 items-center gap-3 border-b rule px-5 pb-3 pt-8">
-      <span className="text-nib">✒︎</span>
-      <div className="min-w-0">
-        <h1 className="text-sm text-vellum-100">Vellum Studio</h1>
-        <StatusDot state={state} settings={settings} />
-      </div>
-      <button
+    <header className="drag flex h-11 shrink-0 items-center gap-3 border-b border-seam bg-panel pl-[80px] pr-4">
+      <Mark size={16} className="shrink-0" />
+      <h1 className="shrink-0 text-body font-semibold tracking-[-0.02em] text-chalk">Vellum Studio</h1>
+      <StatusDot state={state} settings={settings} />
+      <Button
+        primary={!settings.running}
+        className="ml-auto shrink-0"
         onClick={() => patch({ running: !settings.running })}
-        className={`no-drag ml-auto rounded-md border px-4 py-1.5 text-sm transition-colors ${
-          settings.running
-            ? "border-ink-500 text-vellum-300 hover:border-ink-400"
-            : "border-live/50 bg-live/10 text-live hover:bg-live/20"
-        }`}
       >
-        {settings.running ? "Pause" : "Start"}
-      </button>
+        {settings.running ? "Stop" : "Start"}
+      </Button>
     </header>
   );
 }
@@ -172,16 +152,17 @@ function AppPicker({ settings, apps, patch, refreshApps }) {
   useEffect(() => { if (!apps.length) refreshApps(); }, []);
 
   return (
-    <div>
+    <div className="pt-1">
       <div className="flex flex-wrap gap-2">
         {settings.apps.map((app) => (
           <span
             key={app.bundleId}
-            className="flex items-center gap-2 rounded border border-ink-600 bg-ink-700 px-2 py-1 text-xs"
+            className="flex items-center gap-1 rounded border border-edge bg-panel py-1 pl-2 pr-1 text-body text-chalk"
           >
             {app.name}
             <button
-              className="text-vellum-400 hover:text-vellum-100"
+              aria-label={`Remove ${app.name}`}
+              className="rail px-1 hover:text-vermilion"
               onClick={() =>
                 patch({ apps: settings.apps.filter((a) => a.bundleId !== app.bundleId) })
               }
@@ -197,13 +178,13 @@ function AppPicker({ settings, apps, patch, refreshApps }) {
         )}
       </div>
 
-      <select
+      <Select
         value=""
         onChange={(e) => {
           const app = apps.find((a) => a.bundleId === e.target.value);
           if (app) patch({ apps: [...settings.apps, { bundleId: app.bundleId, name: app.name }] });
         }}
-        className="mt-3 w-full rounded border border-ink-600 bg-ink-700 px-2 py-1.5 text-sm"
+        className="mt-3"
       >
         <option value="">Add an app…</option>
         {available.map((a) => (
@@ -211,7 +192,7 @@ function AppPicker({ settings, apps, patch, refreshApps }) {
             {a.name}
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }
@@ -229,19 +210,18 @@ function LogStream({ logs }) {
   }, [logs]);
 
   return (
-    <div
-      ref={ref}
-      className="h-32 overflow-y-auto rounded border border-ink-600 bg-ink-900 p-2 font-mono text-[11px] leading-relaxed"
-    >
-      {logs.length === 0 && <span className="text-vellum-400">waiting…</span>}
+    <div ref={ref} className="well mt-2 h-36 overflow-y-auto p-2 font-mono text-rail leading-4">
+      {logs.length === 0 && <span className="text-dust">waiting</span>}
       {logs.map((e) => (
         <div
           key={e.id ?? `${e.at}-${e.msg}`}
           className={
-            e.level === "error" ? "text-held" : e.level === "warn" ? "text-nib" : "text-vellum-300"
+            e.level === "error" ? "font-medium text-chalk"
+              : e.level === "warn" ? "text-chalk"
+                : "text-ash"
           }
         >
-          <span className="text-vellum-400">
+          <span className="text-dust">
             {new Date(e.at).toTimeString().slice(0, 8)}{" "}
           </span>
           {e.msg}

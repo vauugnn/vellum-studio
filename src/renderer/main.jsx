@@ -1,6 +1,14 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 
+// The two faces the brief names, bundled rather than fetched: the renderer's
+// CSP allows nothing remote, and an offline machine should not fall back to
+// the system font.
+import "@fontsource/archivo/latin-400.css";
+import "@fontsource/archivo/latin-600.css";
+import "@fontsource/ibm-plex-mono/latin-400.css";
+import "@fontsource/ibm-plex-mono/latin-500.css";
+
 import App from "./App.jsx";
 import Hud from "./Hud.jsx";
 import "./index.css";

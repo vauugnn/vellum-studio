@@ -6,6 +6,7 @@ import { create } from "zustand";
 // appears in the UI as though it took.
 
 const MAX_LOG = 200;
+let initStarted = false;
 
 export const useStore = create((set, get) => ({
   settings: null,
@@ -16,6 +17,12 @@ export const useStore = create((set, get) => ({
   ready: false,
 
   async init() {
+    // Effects mount twice under StrictMode in development, and the IPC
+    // listeners below have no unsubscribe — a second run doubled every log
+    // line. One subscription per window, whatever React does.
+    if (initStarted) return;
+    initStarted = true;
+
     const [settings, state] = await Promise.all([
       window.vellum.settings.get(),
       window.vellum.state.get(),

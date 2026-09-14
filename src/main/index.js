@@ -57,7 +57,7 @@ function createMainWindow() {
     show: false,
     title: "Vellum Studio",
     titleBarStyle: "hiddenInset",
-    backgroundColor: "#16151a",
+    backgroundColor: "#17181A",
     webPreferences: {
       preload: path.join(HERE, "..", "preload", "index.cjs"),
       contextIsolation: true,
@@ -74,9 +74,11 @@ function createMainWindow() {
 function createHud() {
   if (hud) return hud;
 
+  // Larger than the sheet it shows: the transparent margin is where the
+  // sheet's shadow falls.
   hud = new BrowserWindow({
-    width: 232,
-    height: 72,
+    width: 280,
+    height: 120,
     show: false,
     frame: false,
     transparent: true,
@@ -107,6 +109,20 @@ function toggleHud() {
 
 // ── tray ────────────────────────────────────────────────────────────────────
 
+/** The mark at menu-bar size. Packaged builds carry it next to the sidecar in
+ *  Contents/Resources; a dev run reads it from the build directory. */
+function trayImage() {
+  const candidates = [
+    path.join(process.resourcesPath ?? "", "tray-16.png"),
+    path.join(HERE, "..", "..", "build", "tray-16.png"),
+  ];
+  for (const p of candidates) {
+    const img = nativeImage.createFromPath(p);
+    if (!img.isEmpty()) return img;
+  }
+  return nativeImage.createEmpty();
+}
+
 function buildTrayMenu() {
   const settings = safeLoad();
   return Menu.buildFromTemplate([
@@ -132,7 +148,7 @@ function applyVisibility(settings) {
   else app.dock?.hide();
 
   if (settings.showInMenuBar && !tray) {
-    tray = new Tray(nativeImage.createEmpty());
+    tray = new Tray(trayImage());
     tray.on("click", () => tray.popUpContextMenu());
   } else if (!settings.showInMenuBar && tray) {
     tray.destroy();
@@ -145,10 +161,9 @@ function refreshTray() {
   if (!tray) return;
   const settings = safeLoad();
   const mark = lastState.paused ? "◍" : settings.running ? "◉" : "○";
-  // Text title rather than an image: one glyph reads more clearly in the menu bar
-  // than a 16px icon. It also means the status is legible at a glance — which is
-  // exactly why this whole item is off by default.
-  tray.setTitle(` ✒︎ ${mark}`);
+  // The status rides beside the mark as a text glyph, so it is legible at a
+  // glance — which is exactly why this whole item is off by default.
+  tray.setTitle(` ${mark}`);
   tray.setToolTip(
     `Vellum Studio — ${settings.running ? "running" : "stopped"}`
   );

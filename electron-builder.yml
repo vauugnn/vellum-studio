@@ -45,6 +45,12 @@ extraResources:
     filter:
       - "**/*"
 
+  # The menu-bar mark, read by the tray from Contents/Resources.
+  - from: build/tray-16.png
+    to: tray-16.png
+  - from: build/tray-16@2x.png
+    to: tray-16@2x.png
+
 mac:
   category: public.app-category.graphics-design
   icon: build/icon.icns

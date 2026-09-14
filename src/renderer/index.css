@@ -10,16 +10,29 @@
   }
 
   body {
-    @apply bg-ink-800 text-vellum-200 font-sans antialiased;
+    @apply bg-graphite font-sans text-body text-chalk antialiased;
     /* Nothing in either window is text the user needs to select, and stray
        selection highlights on a drag look broken. */
     user-select: none;
     cursor: default;
   }
 
-  /* The HUD window is transparent; its own root paints the only surface. */
+  /* The HUD window is transparent; its own sheet paints the only surface. */
   body.hud {
     background: transparent;
+  }
+
+  /* Every control shares the same corners and the same short fade. Nothing
+     here slides or bounces; a state change is a cross-fade under 120ms. */
+  button,
+  input,
+  select {
+    @apply rounded transition-[color,background-color,border-color,opacity];
+  }
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    @apply border-ultra outline-none;
   }
 }
 
@@ -31,19 +44,26 @@
     -webkit-app-region: no-drag;
   }
 
-  .rule {
-    @apply border-ink-600;
-  }
-
-  .field-label {
-    @apply text-[11px] uppercase tracking-[0.14em] text-vellum-400;
+  /* Mono, uppercase, tracked: section labels, status words, small actions. */
+  .rail {
+    @apply font-mono text-rail uppercase tracking-[0.1em] text-dust;
   }
 
   .hint {
-    @apply text-[11px] leading-snug text-vellum-400;
+    @apply text-rail text-dust;
   }
 
-  .card {
-    @apply rounded-lg border border-ink-600 bg-ink-700/60 p-4;
+  /* A recess: the value sits in a well below the surface. */
+  .well {
+    @apply rounded border border-edge bg-pitch;
+  }
+
+  /* Secondary actions sit at 40% until the pointer is near, then rise. */
+  .recede {
+    @apply opacity-40 transition-opacity;
+  }
+  .group:hover .recede,
+  .recede:focus-within {
+    @apply opacity-100;
   }
 }

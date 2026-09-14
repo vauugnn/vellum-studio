@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 
 import { useStore } from "./store.js";
+import { Mark } from "./components.jsx";
 
 // The always-on-top strip. It answers one question — is this working right now,
 // and when does it act next — without needing the panel open. Everything else
@@ -18,34 +19,38 @@ export default function Hud() {
 
   if (!ready) return null;
 
-  const paused = state.paused && now < state.pausedUntil;
-  const [tone, word] = paused
-    ? ["bg-held", "paused"]
+  // A hold only means anything while running; the deadline outlives Stop.
+  const paused = !!settings?.running && state.pausedUntil != null && now < state.pausedUntil;
+  const [dot, word] = paused
+    ? ["bg-dust", "paused"]
     : settings?.running
-      ? ["bg-live", "running"]
-      : ["bg-vellum-400", "stopped"];
+      ? ["bg-ultra", "running"]
+      : ["border border-edge", "stopped"];
 
   const last = [...logs].reverse().find((e) => e.level === "info");
 
+  // The window is larger than the sheet so the shadow has room to fall.
   return (
-    <div className="drag h-full w-full select-none rounded-xl border border-ink-600 bg-ink-900/90 px-3 py-2 backdrop-blur">
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-nib">✒︎</span>
-        <span className={`h-1.5 w-1.5 rounded-full ${tone}`} />
-        <span className="text-[11px] uppercase tracking-wider text-vellum-200">{word}</span>
+    <div className="h-full w-full p-6">
+      <div className="drag flex h-full w-full flex-col justify-center gap-1 rounded border border-edge bg-panel px-3 shadow-sheet">
+        <div className="flex items-center gap-2">
+          <Mark size={16} className="shrink-0" />
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+          <span className="rail text-chalk">{word}</span>
 
-        {paused && (
-          <span className="ml-auto font-mono text-[11px] text-held">
-            {Math.max(0, Math.ceil((state.pausedUntil - now) / 1000))}s
-          </span>
-        )}
-        {!paused && state.currentApp && (
-          <span className="ml-auto truncate text-[11px] text-vellum-400">{state.currentApp}</span>
-        )}
-      </div>
+          {paused && (
+            <span className="ml-auto font-mono text-rail text-chalk">
+              {Math.max(0, Math.ceil((state.pausedUntil - now) / 1000))}s
+            </span>
+          )}
+          {!paused && state.currentApp && (
+            <span className="ml-auto truncate text-rail text-dust">{state.currentApp}</span>
+          )}
+        </div>
 
-      <div className="mt-1 truncate font-mono text-[10px] text-vellum-400">
-        {paused ? "waiting for you to stop" : (last?.msg ?? "—")}
+        <div className="truncate font-mono text-rail text-dust">
+          {paused ? "waiting for you to stop" : (last?.msg ?? "—")}
+        </div>
       </div>
     </div>
   );
