@@ -53,7 +53,6 @@ declare namespace Vellum {
     paceMult: number;
     dwellMult: number;
     busyMult: number;
-    lunchAt: number;
   }
 
   interface Config {

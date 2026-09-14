@@ -43,8 +43,6 @@ export function personalityFor(seed = "") {
     // Nudges the activity target up or down. Kept narrow — this shifts the
     // number the user actually asked for, so it should season, not override.
     busyMult: lerp(unit(h, 3), 0.92, 1.08),
-    // How much they taper toward the end of a session.
-    endTaper: lerp(unit(h, 6), 0.05, 0.20),
     // Fixed offset so two machines never pick the same minutes in a segment.
     phase: unit(h, 7),
   };
@@ -61,9 +59,8 @@ export function personalityFor(seed = "") {
  *
  * @param {object} p         personality
  * @param {number} elapsed   minutes since the session began
- * @param {number|null} total  session length in minutes, or null if open-ended
  */
-export function busyShapeAt(p, elapsed, total = null) {
+export function busyShapeAt(p, elapsed) {
   // A brief settling-in, and no more than that.
   //
   // This used to start at 0.35 and take 40 minutes to reach full pace, which was
@@ -77,11 +74,7 @@ export function busyShapeAt(p, elapsed, total = null) {
   // the personality, so it is the same wave for this machine every time.
   const drift = 1 + 0.12 * Math.sin((elapsed / 47) + p.phase * Math.PI * 2);
 
-  // Taper over the final fifth, but only when there is a known end to taper to.
-  const t = total ? Math.min(Math.max(elapsed / total, 0), 1) : 0;
-  const taper = total ? 1 - p.endTaper * Math.max(0, (t - 0.8) / 0.2) : 1;
-
-  return Math.max(0.25, warmUp * drift * taper * p.busyMult);
+  return Math.max(0.25, warmUp * drift * p.busyMult);
 }
 
 const shapeMeanCache = new Map();
@@ -94,17 +87,17 @@ const shapeMeanCache = new Map();
  * never reached, and "normal, 60%" quietly delivers 55%. Dividing by this mean
  * makes the setting the average the user actually gets while keeping the arc.
  */
-export function dayShapeMean(p, total = null) {
-  // Open-ended sessions are averaged over a nominal eight hours; the curve is
-  // flat enough past the warm-up that the exact horizon barely moves the mean.
-  const span = total ?? 8 * 60;
-  const key = `${p.key}|${span}|${total == null ? "open" : "fixed"}`;
+export function dayShapeMean(p) {
+  // Sessions are open-ended; average over a nominal eight hours. The curve is
+  // flat past the warm-up, so the horizon barely moves the mean.
+  const span = 8 * 60;
+  const key = p.key;
   const hit = shapeMeanCache.get(key);
   if (hit != null) return hit;
 
   let sum = 0, n = 0;
   for (let m = 0; m < span; m += 10) {
-    sum += busyShapeAt(p, m, total);
+    sum += busyShapeAt(p, m);
     n++;
   }
   const mean = n ? sum / n : 1;

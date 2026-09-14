@@ -1,7 +1,7 @@
 // Settings: load, validate, defaults.
 //
 // Two layers by design. The top level is written in the words a person would use
-// to describe what they want ("actions.moveMouse", "runForMinutes"), and
+// to describe what they want ("actions.moveMouse", "resumeAfterSeconds"), and
 // everything with a unit or a Greek letter in it lives under `advanced`, which the
 // UI keeps collapsed. Nothing is unreachable — advanced is a plain object in the
 // same file, hand-editable.
@@ -65,15 +65,6 @@ export const DEFAULTS = {
   // silently restarting its warm-up.
   startedAt: null,
 
-  // How long a session lasts before stopping itself, in minutes. null = until
-  // you stop it.
-  //
-  // This replaces a fixed daily schedule. A work-hours window was the single
-  // largest source of "I pressed Start and nothing happened": correct behaviour,
-  // no feedback, indistinguishable from a broken app. A session that begins when
-  // you press Start has no such failure mode.
-  runForMinutes: null,
-
   // What the app leaves on screen while it runs.
   //
   // Neither of these reaches a session log — that only records the app in
@@ -89,8 +80,10 @@ export const DEFAULTS = {
   showInDock: true,
   showInMenuBar: false,
 
-  pauseWhenIUseTheComputer: true,
-
+  // The pause after real input is not optional; only its length is. Switching it
+  // off was the one thing that ever made the app move while someone was using
+  // the computer, and there is no situation in which it should.
+  //
   // Measured from the LAST real input, not the first — every event you produce
   // pushes the timer out, so a working stretch keeps it held off the whole time
   // and it only resumes once you have genuinely stopped. Short by design: the
@@ -243,16 +236,10 @@ export function validate(raw = {}) {
     apps: validateApps(raw.apps),
 
     startedAt: raw.startedAt == null ? null : int(raw.startedAt, 0, 0, 1e15, "startedAt"),
-    runForMinutes: raw.runForMinutes == null
-      ? null
-      : int(raw.runForMinutes, 60, 1, 24 * 60, "runForMinutes"),
 
     showInDock: bool(raw.showInDock, d.showInDock, "showInDock"),
     showInMenuBar: bool(raw.showInMenuBar, d.showInMenuBar, "showInMenuBar"),
 
-    pauseWhenIUseTheComputer: bool(
-      raw.pauseWhenIUseTheComputer, d.pauseWhenIUseTheComputer, "pauseWhenIUseTheComputer"
-    ),
     resumeAfterSeconds: int(raw.resumeAfterSeconds, d.resumeAfterSeconds, 5, 3600, "resumeAfterSeconds"),
 
     advanced: {

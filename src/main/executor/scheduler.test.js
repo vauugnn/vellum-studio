@@ -39,7 +39,7 @@ function simulate(cfg, count = 500, rng = seeded(7)) {
     const segmentStart = start + i * SEGMENT_MS;
     const plan = planSegment({
       cfg, personality, segmentStart, lastBurstAt,
-      sessionStart: start, runForMinutes: cfg.runForMinutes, rng,
+      sessionStart: start, rng,
     });
     lastBurstAt = plan.bursts.length ? plan.bursts[plan.bursts.length - 1].at : lastBurstAt;
     out.push(plan);
@@ -379,38 +379,21 @@ test("a stopped session does nothing regardless of the clock", () => {
   assert.equal(sessionState(cfg, new Date("2026-08-16T03:00:00").getTime()).state, "stopped");
 });
 
-test("an open-ended session runs from the moment it starts, forever", () => {
+test("a session runs from the moment it starts until it is stopped", () => {
   const t0 = new Date("2026-08-10T03:00:00").getTime();
-  const cfg = validate({ running: true, startedAt: t0, runForMinutes: null });
-
+  const cfg = validate({ running: true, startedAt: t0 });
   for (const afterMin of [0, 1, 60, 60 * 24, 60 * 24 * 7]) {
-    const s = sessionState(cfg, t0 + afterMin * 60_000);
-    assert.equal(s.state, "running", `should still run ${afterMin}min in`);
-    assert.equal(s.remainingMin, null);
+    assert.equal(sessionState(cfg, t0 + afterMin * 60_000).state, "running",
+      `should still run ${afterMin}min in`);
   }
-});
-
-test("a timed session finishes exactly when its duration elapses", () => {
-  const t0 = new Date("2026-08-10T09:00:00").getTime();
-  const cfg = validate({ running: true, startedAt: t0, runForMinutes: 90 });
-
-  assert.equal(sessionState(cfg, t0).state, "running");
-  assert.equal(sessionState(cfg, t0 + 89 * 60_000).state, "running");
-  assert.equal(sessionState(cfg, t0 + 90 * 60_000).state, "finished");
-  assert.equal(sessionState(cfg, t0 + 200 * 60_000).state, "finished");
-
-  assert.equal(Math.round(sessionState(cfg, t0 + 30 * 60_000).remainingMin), 60);
-  assert.equal(sessionState(cfg, t0 + 200 * 60_000).remainingMin, 0);
 });
 
 test("running without a start stamp begins now rather than refusing", () => {
   // Settings written before startedAt existed, or a stamp lost some other way.
   // Refusing to run would be a silent dead end of exactly the kind this model
   // was meant to remove.
-  const cfg = validate({ running: true, startedAt: null, runForMinutes: 60 });
-  const s = sessionState(cfg, Date.now());
-  assert.equal(s.state, "running");
-  assert.equal(Math.round(s.remainingMin), 60);
+  const cfg = validate({ running: true, startedAt: null });
+  assert.equal(sessionState(cfg, Date.now()).state, "running");
 });
 
 test("elapsed time drives the activity curve, not the time of day", () => {
@@ -421,7 +404,7 @@ test("elapsed time drives the activity curve, not the time of day", () => {
     const start = segmentStartFor(new Date(iso).getTime());
     return planSegment({
       cfg, personality, segmentStart: start + 30 * 60_000,
-      sessionStart: start, runForMinutes: null, rng: seeded(5),
+      sessionStart: start, rng: seeded(5),
     }).target;
   };
   assert.equal(shapeAt("2026-08-10T09:00:00"), shapeAt("2026-08-11T03:00:00"));

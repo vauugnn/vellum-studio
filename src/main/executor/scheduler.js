@@ -1,8 +1,7 @@
 // The activity model.
 //
 // Session presence is measured in fixed 10-minute segments at per-minute
-// granularity: a minute
-// counts as active if at least one mouse or keyboard event landed in it, and the
+// granularity: a minute counts as active if at least one mouse or keyboard event landed in it, and the
 // segment's number is activeMinutes / 10. So the unit of planning here is the
 // minute, not the action — the question is never "how often should it move" but
 // "which minutes of this segment get touched".
@@ -140,7 +139,7 @@ function pickKind(rng, cfg) {
  */
 export function planSegment({
   cfg, personality, segmentStart, lastBurstAt = null,
-  sessionStart = null, runForMinutes = null, notBefore = null,
+  sessionStart = null, notBefore = null,
   openNow = false, rng = Math.random,
 }) {
   // Minutes into the session. Without one, treat the segment as fully warmed up
@@ -151,8 +150,7 @@ export function planSegment({
 
   // Normalised so the configured level is the average across the session rather
   // than a ceiling the arc never reaches.
-  const shape = busyShapeAt(personality, elapsed, runForMinutes)
-    / dayShapeMean(personality, runForMinutes);
+  const shape = busyShapeAt(personality, elapsed) / dayShapeMean(personality);
   const mean = configuredTarget(cfg) * shape;
   const drawn = gaussian(rng, mean, cfg.advanced.segmentVarianceSigma);
   const target = Math.max(1, Math.min(MAX_ACTIVE_MINUTES, Math.round(drawn)));
@@ -314,30 +312,17 @@ export function planSegment({
 /**
  * Where the session stands right now.
  *
- * Replaces the old work-hours window. There is no schedule to fall outside of any
- * more: a session begins when Start is pressed and runs until it is stopped or
- * its duration elapses, so the only reasons to stand still are ones the user
- * created deliberately and can see.
+ * A session begins when Start is pressed and runs until it is stopped. There is
+ * no schedule to fall outside of and no length to run out of, so the only reason
+ * to stand still is one the user created deliberately and can see.
  *
- * @returns {{state: "stopped"|"running"|"finished", elapsedMin: number,
- *            remainingMin: number|null}}
+ * @returns {{state: "stopped"|"running", elapsedMin: number}}
  */
 export function sessionState(cfg, at = Date.now()) {
-  if (!cfg.running) return { state: "stopped", elapsedMin: 0, remainingMin: null };
+  if (!cfg.running) return { state: "stopped", elapsedMin: 0 };
 
   // Running with no stamp means a session predating this field, or one whose
   // stamp was lost. Treat it as starting now rather than refusing to run.
   const started = cfg.startedAt ?? at;
-  const elapsedMin = Math.max(0, (at - started) / MINUTE_MS);
-
-  if (cfg.runForMinutes == null) {
-    return { state: "running", elapsedMin, remainingMin: null };
-  }
-
-  const remainingMin = cfg.runForMinutes - elapsedMin;
-  return {
-    state: remainingMin > 0 ? "running" : "finished",
-    elapsedMin,
-    remainingMin: Math.max(0, remainingMin),
-  };
+  return { state: "running", elapsedMin: Math.max(0, (at - started) / MINUTE_MS) };
 }

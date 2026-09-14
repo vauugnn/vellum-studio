@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 
 import { useStore } from "./store.js";
-import { Switch, Section, StatusDot, ActivityMeter } from "./components.jsx";
+import { Switch, Section, StatusDot } from "./components.jsx";
 
 export default function App() {
   const {
@@ -105,91 +105,23 @@ export default function App() {
           </p>
         </Section>
 
-        <Section title="How long">
-          <div className="flex flex-wrap gap-2">
-            {RUN_LENGTHS.map(([label, minutes]) => {
-              const on = (settings.runForMinutes ?? null) === minutes;
-              return (
-                <button
-                  key={label}
-                  onClick={() => patch({ runForMinutes: minutes })}
-                  className={`rounded border px-3 py-1.5 text-xs ${
-                    on ? "border-nib/50 bg-nib/10 text-nib"
-                       : "border-ink-600 text-vellum-300 hover:border-ink-500"
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-          <p className="hint mt-2">
-            {settings.runForMinutes
-              ? `Starts the moment you press Start and stops itself after ${formatMinutes(settings.runForMinutes)}.`
-              : "Starts the moment you press Start and keeps going until you stop it."}
-          </p>
-        </Section>
-
-        <Section title="Safety">
-          <Switch
-            label="Stop when I use the computer"
-            hint="Notices real input within a moment and gets out of the way."
-            checked={settings.pauseWhenIUseTheComputer}
-            onChange={(v) => patch({ pauseWhenIUseTheComputer: v })}
-          />
-          {settings.pauseWhenIUseTheComputer && (
-            <div className="ml-[42px] pb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-vellum-300">Wait</span>
-                <input
-                  type="number"
-                  min={5}
-                  max={600}
-                  value={settings.resumeAfterSeconds}
-                  onChange={(e) => patch({ resumeAfterSeconds: Number(e.target.value) })}
-                  className="w-16 rounded border border-ink-600 bg-ink-700 px-2 py-1 text-sm"
-                />
-                <span className="text-sm text-vellum-300">seconds before picking back up</span>
-              </div>
-              <p className="hint mt-1">
-                Counted from the last thing you touched, so it stays out of the way
-                for as long as you keep working.
-              </p>
-            </div>
-          )}
-        </Section>
-
-        <Section title="What's visible while it runs">
+        <Section title="When you use the computer">
           <p className="hint mb-2">
-            Neither of these puts Vellum in a session log — that only
-            records whatever app is in front, and this one never is unless you
-            open this window. They matter because a screen capture takes the whole
-            screen.
+            It freezes the moment you touch the keyboard or trackpad, and stays
+            frozen for as long as you keep working.
           </p>
-          <Switch
-            label="Show in the Dock"
-            hint="A normal app icon. An illustration tool in the Dock is unremarkable; an app with no presence anywhere is harder to explain."
-            checked={settings.showInDock}
-            onChange={(v) => patch({ showInDock: v })}
-          />
-          <Switch
-            label="Show in the menu bar"
-            tone="risky"
-            hint="Adds a status mark that changes as it runs. Off by default — a static icon is one thing, an indicator that visibly reacts is another."
-            checked={settings.showInMenuBar}
-            onChange={(v) => patch({ showInMenuBar: v })}
-          />
-          <p className="hint mt-2">
-            With both off, nothing on screen is left to click — reopen this window
-            with <b className="text-vellum-300">⌘⌥⇧V</b>. The panic stop
-            (<b className="text-vellum-300">⌃⌥⌘.</b>) and the HUD toggle
-            (<b className="text-vellum-300">⌘⌥V</b>) work regardless, so nothing
-            has to come to the front mid-shift.
-          </p>
-        </Section>
-
-        <Section title="Last hour">
-          <ActivityMeter segments={state.segments ?? []} />
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-vellum-300">Picks back up</span>
+            <input
+              type="number"
+              min={5}
+              max={600}
+              value={settings.resumeAfterSeconds}
+              onChange={(e) => patch({ resumeAfterSeconds: Number(e.target.value) })}
+              className="w-16 rounded border border-ink-600 bg-ink-700 px-2 py-1 text-sm"
+            />
+            <span className="text-sm text-vellum-300">seconds after you stop</span>
+          </div>
         </Section>
 
         <Section
@@ -230,19 +162,6 @@ function TitleBar({ state, settings, patch }) {
       </button>
     </header>
   );
-}
-
-const RUN_LENGTHS = [
-  ["Until I stop it", null],
-  ["1 hour", 60],
-  ["4 hours", 240],
-  ["8 hours", 480],
-];
-
-function formatMinutes(m) {
-  if (m < 60) return `${m} minutes`;
-  const h = m / 60;
-  return `${Number.isInteger(h) ? h : h.toFixed(1)} hour${h === 1 ? "" : "s"}`;
 }
 
 function AppPicker({ settings, apps, patch, refreshApps }) {

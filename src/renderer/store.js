@@ -9,7 +9,7 @@ const MAX_LOG = 200;
 
 export const useStore = create((set, get) => ({
   settings: null,
-  state: { running: false, paused: false, segments: [] },
+  state: { running: false, paused: false },
   logs: [],
   apps: [],
   error: null,

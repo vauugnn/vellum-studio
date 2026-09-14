@@ -35,14 +35,11 @@ export class Runner {
   #leftAt = new Map();        // bundleId -> epoch ms we last switched away from it
   #currentApp = null;
   #burstsSinceBreak = 0;
-  // null | "stopped" | "finished" — why nothing is happening, when nothing is
+  // null | "stopped" — why nothing is happening, when nothing is
   #gate = "stopped";
 
-  // What the sidecar currently believes, so changes can be detected and pushed.
-  #deviceGuard = null;
   #loadedScriptPath = undefined;
   #sessionOpened = false;
-  #segments = [];             // recent plans, for the UI's activity meter
 
   /**
    * @param {object} o
@@ -76,10 +73,7 @@ export class Runner {
       paused: Date.now() < this.#pausedUntil,
       pausedUntil: this.#pausedUntil,
       currentApp: this.#currentApp,
-      segments: this.#segments.slice(-6),
       gate: this.#gate,
-      runForMinutes: this.cfg.runForMinutes,
-      startedAt: this.cfg.startedAt,
     };
   }
 
@@ -119,11 +113,8 @@ export class Runner {
     }
     logger.info(`personality: ${summarize(this.personality)}`);
 
-    this.#deviceGuard = this.cfg.pauseWhenIUseTheComputer;
-
-    if (this.cfg.pauseWhenIUseTheComputer) {
-      await this.#device.call("guard", { on: true });
-    }
+    // Always armed. Real input must always win over the schedule.
+    await this.#device.call("guard", { on: true });
   }
 
   async stop() {
@@ -223,7 +214,6 @@ export class Runner {
             personality: this.personality,
             segmentStart: base + i * SEGMENT_MS,
             sessionStart: this.cfg.startedAt,
-            runForMinutes: this.cfg.runForMinutes,
           });
           seen.add(plan.minutes.join(","));
           rows.push(
@@ -412,7 +402,6 @@ export class Runner {
   }
 
   #onHumanInput(msg) {
-    if (!this.cfg.pauseWhenIUseTheComputer) return;
     const until = Date.now() + this.cfg.resumeAfterSeconds * 1000;
     if (until <= this.#pausedUntil) return; // already paused at least this long
 
@@ -435,27 +424,6 @@ export class Runner {
    * held back by work hours produced no log line, no state change and no visible
    * difference from a crashed executor.
    */
-  /**
-   * Mirror settings the sidecar caches into the sidecar, whenever they change.
-   *
-   * Anything the sidecar keeps its own copy of has to be re-sent when the user
-   * edits it, or the two ends disagree and the executor reports success for work
-   * that was thrown away.
-   */
-  async #syncDeviceSettings() {
-    if (!this.#device?.running) return;
-
-    if (this.cfg.pauseWhenIUseTheComputer !== this.#deviceGuard) {
-      this.#deviceGuard = this.cfg.pauseWhenIUseTheComputer;
-      await this.#device.call("guard", { on: this.cfg.pauseWhenIUseTheComputer }).catch(() => {});
-      // Leaving a stale hold in place would keep the run parked with the very
-      // feature that caused it now switched off.
-      if (!this.cfg.pauseWhenIUseTheComputer) this.#pausedUntil = 0;
-      logger.info(`stop-when-I-use-the-computer ${this.cfg.pauseWhenIUseTheComputer ? "on" : "off"}`);
-      this.onState(this.state);
-    }
-  }
-
   /**
    * Load, swap or drop the behaviour script to match settings.
    *
@@ -494,15 +462,10 @@ export class Runner {
     if (this.#gate === reason) return;
     this.#gate = reason;
 
-    if (reason === "finished") {
-      logger.info(`session finished — ran its full ${this.cfg.runForMinutes} minutes`);
-    } else if (reason === "stopped") {
+    if (reason === "stopped") {
       logger.info("stopped");
     } else if (reason === null) {
-      const forHow = this.cfg.runForMinutes
-        ? `for ${this.cfg.runForMinutes} minutes`
-        : "until you stop it";
-      logger.info(`session started — running ${forHow}`);
+      logger.info("session started — running until you stop it");
     }
     this.onState(this.state);
   }
@@ -556,10 +519,6 @@ export class Runner {
 
       this.#syncScript();
 
-      // Push the settings the sidecar holds its own copy of. Sent on change
-      // rather than once at startup, so editing one in the panel takes effect.
-      await this.#syncDeviceSettings();
-
       const now = Date.now();
       const session = sessionState(this.cfg, now);
 
@@ -591,7 +550,6 @@ export class Runner {
           segmentStart,
           lastBurstAt,
           sessionStart: this.cfg.startedAt,
-          runForMinutes: this.cfg.runForMinutes,
           // Only plan the part of this segment still ahead of us. Pressing Start
           // partway through one would otherwise produce a plan made entirely of
           // instants that have already passed.
@@ -601,13 +559,6 @@ export class Runner {
           openNow: !this.#sessionOpened,
         });
         this.#sessionOpened = true;
-
-        this.#segments.push({
-          at: segmentStart,
-          activityPercent: plannedSegment.activityPercent,
-          planned: true,
-        });
-        if (this.#segments.length > 60) this.#segments.shift();
 
         const t = new Date(segmentStart).toTimeString().slice(0, 5);
         logger.info(

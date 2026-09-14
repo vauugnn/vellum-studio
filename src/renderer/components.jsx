@@ -75,20 +75,11 @@ export function StatusDot({ state, settings }) {
   // "stopped" while the cursor was visibly moving.
   const started = settings?.running ?? state.running;
 
-  // How much of a timed session is left. Recomputed on the same tick, so it
-  // counts down rather than freezing at whatever the last push happened to say.
-  const remaining = settings?.runForMinutes != null && settings?.startedAt != null
-    ? settings.runForMinutes - (Date.now() - settings.startedAt) / 60_000
-    : null;
-
   const [tone, word, hint] = !started
     ? ["bg-vellum-400", "stopped", null]
     : paused
       ? ["bg-held", "paused", `you're using the computer — ${secondsLeft}s`]
-      : state.gate === "finished" || (remaining != null && remaining <= 0)
-        ? ["bg-vellum-400", "finished", "ran its full length"]
-        : ["bg-live", "running",
-           remaining != null ? `${Math.ceil(remaining)} min left` : null];
+      : ["bg-live", "running", null];
 
   return (
     <span className="flex items-center gap-2">
@@ -99,44 +90,3 @@ export function StatusDot({ state, settings }) {
   );
 }
 
-/**
- * Activity over the last hour, one bar per 10-minute segment.
- *
- * Labelled as an estimate on purpose: this is the app's own count of the minutes
- * it touched, not a reading from anywhere else. Presenting it as the real number
- * would be the one genuinely misleading thing this window could do.
- */
-export function ActivityMeter({ segments }) {
-  const recent = segments.slice(-6);
-  const avg = recent.length
-    ? Math.round(recent.reduce((s, x) => s + x.activityPercent, 0) / recent.length)
-    : 0;
-
-  return (
-    <div>
-      <div className="flex h-12 items-end gap-1.5">
-        {recent.length === 0 && (
-          <span className="hint self-center">nothing planned yet</span>
-        )}
-        {recent.map((seg) => (
-          <div key={seg.at} className="flex flex-1 flex-col items-center gap-1">
-            <div
-              className="w-full rounded-sm bg-nib/70"
-              style={{ height: `${Math.max(4, seg.activityPercent * 0.42)}px` }}
-              title={`${new Date(seg.at).toTimeString().slice(0, 5)} — ${seg.activityPercent}%`}
-            />
-            <span className="text-[9px] text-vellum-400">
-              {new Date(seg.at).toTimeString().slice(0, 5)}
-            </span>
-          </div>
-        ))}
-      </div>
-      {recent.length > 0 && (
-        <p className="hint mt-2">
-          about {avg}% on average — this is what Vellum planned, not a reading from
-          anywhere else.
-        </p>
-      )}
-    </div>
-  );
-}

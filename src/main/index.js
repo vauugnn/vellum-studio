@@ -37,7 +37,7 @@ let tray = null;
 let supervisor = null;
 
 /** Last state pushed by the executor, replayed to windows opened later. */
-let lastState = { running: false, paused: false, segments: [] };
+let lastState = { running: false, paused: false };
 
 // ── windows ─────────────────────────────────────────────────────────────────
 
