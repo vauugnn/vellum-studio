@@ -622,33 +622,42 @@ export class Runner {
       // Anything already past is missed — the minute it belonged to is gone.
       const due = plannedSegment.bursts.filter((b) => b.at > Date.now());
       if (!due.length) {
-        await this.#sleepUntil(plannedSegment.segmentEnd);
+        await this.#sleepUntil(plannedSegment.segmentEnd, () => this.#stillRunning() && !this.#paused);
+        if (this.#paused) {
+          await this.#waitOutPause();
+          if (!this.#stopping && this.#stillRunning() && await this.#resumeNow()) {
+            lastBurstAt = Date.now();
+          }
+        }
         continue;
       }
 
-      for (const burst of due) {
-        if (this.#stopping) break;
-        // Bail the moment the session is stopped, rather than working through
-        // every burst already queued for this segment.
-        if (!(await this.#sleepUntil(burst.at, () => this.#stillRunning()))) break;
+      let i = 0;
+      while (i < due.length && !this.#stopping) {
+        const burst = due[i];
 
+        // The user is at the keyboard. Wait until they have genuinely been quiet
+        // for the timeout, then pick up straight away rather than at the next
+        // scheduled minute — which could be over a minute off, and read as the
+        // app having died.
         if (this.#paused) {
-          await this.#sleepUntil(this.#pausedUntil);
-          if (this.#stopping) break;
-          logger.info(`picked back up after ${this.cfg.resumeAfterSeconds}s of quiet`);
-          // Push state on the way out of a pause, not just on the way in — the UI
-          // has no other signal that the hold has ended.
-          this.onState(this.state);
-
-          // The burst was due while the user was working. If its minute has not
-          // elapsed yet, it is still worth doing — the minute is scored on any
-          // event landing inside it, so a burst late by a few seconds counts just
-          // as much as one on time. Only give up once the minute is genuinely
-          // gone; discarding it unconditionally threw away minutes that were
-          // still there for the taking.
-          const minuteEnd = plannedSegment.segmentStart + (burst.minute + 1) * MINUTE_MS;
-          if (Date.now() >= minuteEnd) continue;
+          await this.#waitOutPause();
+          if (this.#stopping || !this.#stillRunning()) break;
+          if (await this.#resumeNow()) lastBurstAt = Date.now();
+          continue; // re-evaluate this burst: its moment may have passed
         }
+
+        // Wait for the burst, but wake early if the user starts using the machine
+        // or stops the session.
+        await this.#sleepUntil(burst.at, () => this.#stillRunning() && !this.#paused);
+        if (!this.#stillRunning()) break;
+        if (this.#paused) continue; // the top of the loop handles the wait + resume
+
+        // A burst whose minute has already elapsed (because we were paused, or
+        // just resumed) is not worth doing — the minute is gone and the resume
+        // burst already covered the present one.
+        const minuteEnd = plannedSegment.segmentStart + (burst.minute + 1) * MINUTE_MS;
+        if (Date.now() >= minuteEnd) { i++; continue; }
 
         // Step away from the desk now and then. Costs the minutes it covers,
         // which is the point — a day with no gaps in it does not look like a day.
@@ -657,6 +666,7 @@ export class Runner {
           logger.info(`taking a break for ${secs}s`);
           // A break can run to 90s; Stop must not have to wait it out.
           if (!(await this.#sleepUntil(Date.now() + secs * 1000, () => this.#stillRunning()))) break;
+          i++;
           continue;
         }
 
@@ -665,10 +675,46 @@ export class Runner {
           this.#burstsSinceBreak++;
           lastBurstAt = Date.now();
         } catch (e) {
-          if (e instanceof Yielded) continue;
-          logger.warn(`burst failed: ${e.message}`);
+          if (!(e instanceof Yielded)) logger.warn(`burst failed: ${e.message}`);
         }
+        i++;
       }
+    }
+  }
+
+  /**
+   * Block until the user has been quiet for the full timeout.
+   *
+   * Re-reads the deadline on every tick. The old wait captured pausedUntil once,
+   * so while the user kept typing — each keystroke pushing the deadline out — the
+   * sleep still ended at the original value, logged "picked back up" in the
+   * middle of their sentence, and threw the burst away.
+   */
+  async #waitOutPause() {
+    while (this.#paused && !this.#stopping) await sleep(200);
+  }
+
+  /**
+   * Do something immediately after a pause ends.
+   *
+   * Without this the loop went back to waiting for the next planned minute,
+   * which at busy is one to two minutes away — so the user stopped, waited the
+   * ten seconds they had configured, saw nothing, and reasonably concluded it
+   * was broken. Resuming is treated like opening: an app switch when allowed,
+   * otherwise a move, then the schedule carries on.
+   */
+  async #resumeNow() {
+    logger.info(`picked back up after ${this.cfg.resumeAfterSeconds}s of quiet`);
+    this.onState(this.state);
+
+    const kind = this.cfg.actions.switchApps && this.cfg.apps.length ? "switchApp" : "move";
+    try {
+      await this.#perform({ kind, minute: -1, filler: false, resume: true });
+      this.#burstsSinceBreak++;
+      return true;
+    } catch (e) {
+      if (!(e instanceof Yielded)) logger.warn(`resume failed: ${e.message}`);
+      return false;
     }
   }
 
@@ -813,7 +859,13 @@ export class Runner {
 
   /** A follow-up action inside a burst — never another app switch. */
   #followUpKind() {
-    return this.cfg.actions.scroll && chance(0.25) ? "scroll" : "move";
+    const r = Math.random();
+    // A switch mid-burst, occasionally — someone flicking to another window to
+    // check something and coming back. Only when there is more than one app to
+    // flick between.
+    if (this.cfg.actions.switchApps && this.cfg.apps.length > 1 && r < 0.12) return "switchApp";
+    if (this.cfg.actions.scroll && r < 0.37) return "scroll";
+    return "move";
   }
 
   /**

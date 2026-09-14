@@ -105,7 +105,10 @@ export function pickMinutes(rng, count, maxGap = 4, span = 10, offset = 0) {
 function pickKind(rng, cfg) {
   const canSwitch = cfg.actions.switchApps && cfg.apps.length > 0;
   const weights = [
-    ["switchApp", canSwitch ? 0.18 : 0],
+    // Raised from 0.18, which produced roughly one and a half switches per ten
+    // minutes — someone working across a few apps changes window far more often
+    // than that, and the app rotation is what decides what is on screen at all.
+    ["switchApp", canSwitch ? 0.4 : 0],
     ["scroll", cfg.actions.scroll ? 0.24 : 0],
     ["move", cfg.actions.moveMouse ? 0.58 : 0],
   ].filter(([, w]) => w > 0);

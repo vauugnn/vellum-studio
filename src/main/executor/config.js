@@ -124,7 +124,7 @@ export const DEFAULTS = {
     // Low on purpose. This only needs to discourage an immediate return to the
     // app just left — #nextApp already weights the current app down to 0.12 for
     // that — and a long cooldown starves rotation entirely on a short app list.
-    appCooldownMinutes: 4,
+    appCooldownMinutes: 2,
 
     // Identity. Empty means "derive from this machine's hostname", which keeps
     // pacing stable across restarts instead of resampling a new person each run.
