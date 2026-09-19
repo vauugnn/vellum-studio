@@ -137,6 +137,9 @@ function TitleBar({ state, settings, patch }) {
 function AppPicker({ settings, apps, patch, refreshApps }) {
   // Only offer apps that are not already chosen, so the menu shrinks as it is used.
   const chosen = new Set(settings.apps.map((a) => a.bundleId));
+  // Icons come with the running-app list; a chosen app that is closed right
+  // now simply shows its name.
+  const iconOf = new Map(apps.map((a) => [a.bundleId, a.icon]));
   const available = apps.filter((a) => !chosen.has(a.bundleId));
 
   useEffect(() => { if (!apps.length) refreshApps(); }, []);
@@ -147,8 +150,11 @@ function AppPicker({ settings, apps, patch, refreshApps }) {
         {settings.apps.map((app) => (
           <span
             key={app.bundleId}
-            className="flex items-center gap-1 rounded border border-edge bg-panel py-1 pl-2 pr-1 text-body text-chalk"
+            className="flex items-center gap-1.5 rounded border border-edge bg-panel py-1 pl-2 pr-1 text-body text-chalk"
           >
+            {iconOf.get(app.bundleId) && (
+              <img src={iconOf.get(app.bundleId)} alt="" className="h-4 w-4 shrink-0" />
+            )}
             {app.name}
             <button
               aria-label={`Remove ${app.name}`}

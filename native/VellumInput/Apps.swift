@@ -60,6 +60,8 @@ func listApps() -> [[String: Any]] {
                 "pid": Int(app.processIdentifier),
                 "active": app.isActive,
                 "hidden": app.isHidden,
+                // Where the bundle lives, so the panel can show its icon.
+                "path": app.bundleURL?.path ?? "",
             ]
         }
 }
