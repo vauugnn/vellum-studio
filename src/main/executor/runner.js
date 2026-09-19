@@ -37,6 +37,9 @@ export class Runner {
   #burstsSinceBreak = 0;
   // null | "stopped" — why nothing is happening, when nothing is
   #gate = "stopped";
+  // Whether macOS lets us post input at all. Without it every stroke is dropped
+  // silently, so the panel has to be told rather than left to look broken.
+  #trusted = true;
 
   #loadedScriptPath = undefined;
   #sessionOpened = false;
@@ -74,6 +77,7 @@ export class Runner {
       pausedUntil: this.#pausedUntil,
       currentApp: this.#currentApp,
       gate: this.#gate,
+      trusted: this.#trusted,
     };
   }
 
@@ -100,9 +104,12 @@ export class Runner {
 
     this.#device.start();
 
+    // Ask macOS to show its own Accessibility prompt when the grant is missing.
+    // It appears once per reset; the panel carries the reminder after that.
     const caps = await this.#device.require("caps", {
-      prompt: false,
+      prompt: true,
     });
+    this.#trusted = !!caps.trusted;
 
     logger.info(
       `sidecar v${caps.version} — accessibility ${caps.trusted ? "granted" : "MISSING"}, ` +
@@ -521,6 +528,20 @@ export class Runner {
     let lastBurstAt = null;
 
     while (!this.#stopping) {
+      // The grant can arrive while we are running. Ask again until it does —
+      // the same call arms the guard, which could not start without it.
+      if (!this.#trusted) {
+        const caps = await this.#device.call("caps", { prompt: false }).catch(() => null);
+        if (caps?.trusted) {
+          this.#trusted = true;
+          logger.info("Accessibility granted — input will reach the system now");
+          this.onState(this.state);
+        } else {
+          await sleep(2000);
+          continue;
+        }
+      }
+
       // Re-read settings every pass: start/stop, busy level and the action
       // switches all take effect without a restart.
       try {
