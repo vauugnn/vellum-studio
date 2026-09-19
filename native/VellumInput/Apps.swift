@@ -49,6 +49,30 @@ private func screenUnion() -> CGRect {
 
 /// Regular (Dock-visible) running apps. Agents and daemons are filtered out —
 /// they have no windows to move a cursor into.
+/// An app's real icon as base64 PNG at `px` pixels square.
+///
+/// Drawn here because Electron's own file-icon call returns the generic blank
+/// app icon for a .app bundle — NSWorkspace, called from a native process,
+/// returns the actual artwork.
+func iconPNG(forPath path: String, px: Int = 64) -> String? {
+    guard !path.isEmpty,
+          let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+    else { return nil }
+
+    let side = NSSize(width: px, height: px)
+    rep.size = side
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    NSWorkspace.shared.icon(forFile: path)
+        .draw(in: NSRect(origin: .zero, size: side), from: .zero, operation: .copy, fraction: 1)
+    NSGraphicsContext.restoreGraphicsState()
+
+    return rep.representation(using: .png, properties: [:])?.base64EncodedString()
+}
+
 func listApps() -> [[String: Any]] {
     NSWorkspace.shared.runningApplications
         .filter { $0.activationPolicy == .regular }
@@ -60,8 +84,7 @@ func listApps() -> [[String: Any]] {
                 "pid": Int(app.processIdentifier),
                 "active": app.isActive,
                 "hidden": app.isHidden,
-                // Where the bundle lives, so the panel can show its icon.
-                "path": app.bundleURL?.path ?? "",
+                "icon": iconPNG(forPath: app.bundleURL?.path ?? "") ?? "",
             ]
         }
 }

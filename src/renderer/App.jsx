@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 
 import { useStore } from "./store.js";
 import {
-  Action, Button, Mark, Row, Scrub, Section, Select, StatusDot, Toggle,
+  Action, Button, Mark, Row, Scrub, Section, StatusDot, Toggle,
 } from "./components.jsx";
 
 export default function App() {
@@ -134,13 +134,23 @@ function TitleBar({ state, settings, patch }) {
   );
 }
 
+const iconSrc = (b64) => (b64 ? `data:image/png;base64,${b64}` : null);
+
+function AppIcon({ b64 }) {
+  const src = iconSrc(b64);
+  // A fixed box either way, so a chip without an icon does not shift the row.
+  return src
+    ? <img src={src} alt="" className="h-4 w-4 shrink-0" />
+    : <span className="h-4 w-4 shrink-0" />;
+}
+
 function AppPicker({ settings, apps, patch, refreshApps }) {
   // Only offer apps that are not already chosen, so the menu shrinks as it is used.
   const chosen = new Set(settings.apps.map((a) => a.bundleId));
+  const available = apps.filter((a) => !chosen.has(a.bundleId));
   // Icons come with the running-app list; a chosen app that is closed right
   // now simply shows its name.
   const iconOf = new Map(apps.map((a) => [a.bundleId, a.icon]));
-  const available = apps.filter((a) => !chosen.has(a.bundleId));
 
   useEffect(() => { if (!apps.length) refreshApps(); }, []);
 
@@ -152,9 +162,7 @@ function AppPicker({ settings, apps, patch, refreshApps }) {
             key={app.bundleId}
             className="flex items-center gap-1.5 rounded border border-edge bg-panel py-1 pl-2 pr-1 text-body text-chalk"
           >
-            {iconOf.get(app.bundleId) && (
-              <img src={iconOf.get(app.bundleId)} alt="" className="h-4 w-4 shrink-0" />
-            )}
+            <AppIcon b64={iconOf.get(app.bundleId)} />
             {app.name}
             <button
               aria-label={`Remove ${app.name}`}
@@ -174,21 +182,69 @@ function AppPicker({ settings, apps, patch, refreshApps }) {
         )}
       </div>
 
-      <Select
-        value=""
-        onChange={(e) => {
-          const app = apps.find((a) => a.bundleId === e.target.value);
-          if (app) patch({ apps: [...settings.apps, { bundleId: app.bundleId, name: app.name }] });
-        }}
-        className="mt-3"
+      <AppMenu
+        apps={available}
+        onOpen={refreshApps}
+        onPick={(a) => patch({ apps: [...settings.apps, { bundleId: a.bundleId, name: a.name }] })}
+      />
+    </div>
+  );
+}
+
+/**
+ * The "Add an app" list. A native <select> cannot draw images in its options, so
+ * this is a small listbox of our own: opens on click, refreshes the running-app
+ * list as it opens, closes on a pick, Escape, or a click anywhere else.
+ */
+function AppMenu({ apps, onPick, onOpen }) {
+  const [open, setOpen] = React.useState(false);
+  const root = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e) => { if (!root.current?.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
+  return (
+    <div ref={root} className="relative mt-3">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => { if (!open) onOpen(); setOpen(!open); }}
+        className={`well flex h-8 w-full items-center justify-between px-2 text-left text-body text-chalk hover:border-dust ${open ? "border-ultra" : ""}`}
       >
-        <option value="">Add an app…</option>
-        {available.map((a) => (
-          <option key={a.bundleId} value={a.bundleId}>
-            {a.name}
-          </option>
-        ))}
-      </Select>
+        Add an app…
+        <span className="rail">{open ? "▴" : "▾"}</span>
+      </button>
+
+      {open && (
+        <ul
+          role="listbox"
+          className="absolute left-0 right-0 z-10 mt-1 max-h-60 overflow-y-auto rounded border border-edge bg-panel py-1 shadow-sheet"
+        >
+          {apps.length === 0 && <li className="hint px-2 py-1.5">nothing else is open</li>}
+          {apps.map((a) => (
+            <li key={a.bundleId} role="option">
+              <button
+                type="button"
+                onClick={() => { onPick(a); setOpen(false); }}
+                className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-body text-chalk hover:bg-seam"
+              >
+                <AppIcon b64={a.icon} />
+                {a.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -236,19 +236,6 @@ function registerIpc() {
 
 let pendingAppList = null;
 
-/** Attach each app's own icon as a data URL. A miss just leaves the name. */
-function withIcons(apps) {
-  return Promise.all(apps.map(async (a) => {
-    if (!a.path) return a;
-    try {
-      const icon = await app.getFileIcon(a.path, { size: "small" });
-      return { ...a, icon: icon.toDataURL() };
-    } catch {
-      return a;
-    }
-  }));
-}
-
 // ── executor wiring ─────────────────────────────────────────────────────────
 
 function startExecutor() {
@@ -260,12 +247,10 @@ function startExecutor() {
           send("state", lastState);
           refreshTray();
           break;
-        case "appList": {
-          const resolve = pendingAppList;
+        case "appList":
+          pendingAppList?.(msg.apps ?? []);
           pendingAppList = null;
-          if (resolve) withIcons(msg.apps ?? []).then(resolve);
           break;
-        }
         case "log":
           send("log", msg);
           break;
